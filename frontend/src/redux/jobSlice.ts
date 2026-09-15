@@ -1,0 +1,110 @@
+import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
+import api from '../services/api';
+
+export const fetchJobCards = createAsyncThunk('jobCards/fetch', async (params: Record<string, any> = {}, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/jobcards', { params });
+    return res.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || 'Failed to load job cards');
+  }
+});
+
+export const fetchJobCard = createAsyncThunk('jobCards/fetchOne', async (id: string, { rejectWithValue }) => {
+  try {
+    const res = await api.get(`/jobcards/${id}`);
+    return res.data.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || 'Failed to load job card');
+  }
+});
+
+export const createJobCard = createAsyncThunk('jobCards/create', async (payload: any, { rejectWithValue }) => {
+  try {
+    const res = await api.post('/jobcards', payload);
+    return res.data.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || 'Failed to create job card');
+  }
+});
+
+export const updateJobCard = createAsyncThunk('jobCards/update', async ({ id, payload }: { id: string; payload: any }, { rejectWithValue }) => {
+  try {
+    const res = await api.put(`/jobcards/${id}`, payload);
+    return res.data.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || 'Failed to update job card');
+  }
+});
+
+export const updateJobStatus = createAsyncThunk(
+  'jobCards/status',
+  async ({ id, status, notes }: { id: string; status: string; notes?: string }, { rejectWithValue }) => {
+    try {
+      const res = await api.patch(`/jobcards/${id}/status`, { status, notes });
+      return res.data.data;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.error || 'Failed to update status');
+    }
+  }
+);
+
+export const deleteJobCard = createAsyncThunk('jobCards/delete', async (id: string, { rejectWithValue }) => {
+  try {
+    await api.delete(`/jobcards/${id}`);
+    return id;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || 'Failed to delete job card');
+  }
+});
+
+const jobCardSlice = createSlice({
+  name: 'jobCards',
+  initialState: {
+    items: [],
+    current: null,
+    pagination: { page: 1, limit: 10, total: 0, totalPages: 1 },
+    loading: false,
+    error: null,
+  },
+  reducers: {},
+  extraReducers: (builder) => {
+    builder
+      .addCase(fetchJobCards.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchJobCards.fulfilled, (state, action) => {
+        state.loading = false;
+        state.items = action.payload.data;
+        state.pagination = action.payload.pagination;
+      })
+      .addCase(fetchJobCards.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(fetchJobCard.pending, (state) => {
+        state.loading = true;
+      })
+      .addCase(fetchJobCard.fulfilled, (state, action) => {
+        state.loading = false;
+        state.current = action.payload;
+      })
+      .addCase(fetchJobCard.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload;
+      })
+      .addCase(createJobCard.fulfilled, (state, action) => {
+        state.items.unshift(action.payload);
+      })
+      .addCase(updateJobStatus.fulfilled, (state, action) => {
+        state.current = action.payload;
+        const idx = state.items.findIndex((i) => i._id === action.payload._id);
+        if (idx !== -1) state.items[idx] = action.payload;
+      })
+      .addCase(deleteJobCard.fulfilled, (state, action) => {
+        state.items = state.items.filter((i) => i._id !== action.payload);
+      });
+  },
+});
+
+export default jobCardSlice.reducer;

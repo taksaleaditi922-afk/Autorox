@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background-color: #f8fafc;
+  font-family: 'Inter', 'Roboto', 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Smooth scrolling */
+html { scroll-behavior: smooth; }
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 7px; height: 7px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+a { color: inherit; text-decoration: none; }
+
+/* Fade-in animation for page content */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.fade-in-up { animation: fadeInUp 0.35s ease-out; }
+.fade-in    { animation: fadeIn 0.3s ease-out; }
+
+/* Print styles */
+@media print {
+  body { background: white !important; }
+  .MuiAppBar-root, .MuiDrawer-root, .no-print { display: none !important; }
+  main { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+}
+
+/* Smooth horizontal scroll for wide tables on touch devices */
+.MuiTableContainer-root {
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Prevent very wide unbreakable strings from blowing out mobile layout */
+.box {
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Better tap targets on small screens */
+@media (max-width: 600px) {
+  .MuiIconButton-root { padding: 8px; }
+}
+
+/* Loading skeleton shimmer */
+@keyframes shimmer {
+  0% { background-position: -200px 0; }
+  100% { background-position: 200px 0; }
+}
+.skeleton {
+  background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+  background-size: 400px 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+/* Page header pattern */
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+/* Consistent card spacing for filter bars */
+.filter-bar {
+  padding: 16px 20px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+/* Empty state */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+}

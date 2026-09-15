@@ -1,0 +1,15 @@
+{
+  "name": "autogarage",
+  "version": "1.0.0",
+  "description": "AutoGarage Job Card Management System - MERN monorepo (backend API + React admin dashboard)",
+  "private": true,
+  "scripts": {
+    "dev": "start-autorox.bat",
+    "install:all": "npm --prefix backend install && npm --prefix frontend install",
+    "seed": "npm --prefix backend run seed",
+    "dev:backend": "npm --prefix backend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build"
+  },
+  "license": "MIT"
+}
