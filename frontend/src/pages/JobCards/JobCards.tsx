@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
   Box, Card, Typography, TextField, MenuItem, Button, Table, TableHead, TableRow,
   TableBody, TableCell, TableContainer, TablePagination, IconButton, InputAdornment,
@@ -19,9 +19,9 @@ const STATUS_OPTIONS = ['New', 'In Progress', 'Pending Parts', 'Pending Approval
 const PRIORITY_OPTIONS = ['Low', 'Medium', 'High', 'Urgent'];
 
 export default function JobCards() {
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const { items, pagination, loading } = useSelector((state) => state.jobCards);
+  const { items, pagination, loading } = useAppSelector((state) => state.jobCards);
 
   const [filters, setFilters] = useState({ status: '', priority: '', q: '', type: '' });
   const [page, setPage] = useState(0);

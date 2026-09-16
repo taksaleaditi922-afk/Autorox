@@ -18,6 +18,8 @@ export interface InventoryFilters {
   inStock?: boolean;
   outOfStock?: boolean;
   reorderLevel?: boolean;
+  sortField?: string;
+  sortOrder?: 'asc' | 'desc';
   page: number;
   limit: number;
 }
@@ -51,6 +53,8 @@ export interface InventoryItem {
     supplierName?: string;
     supplierPhone?: string;
   };
+  lastPurchaseDate?: string;
+  lastMovementDate?: string;
   createdAt: string;
   updatedAt: string;
 }

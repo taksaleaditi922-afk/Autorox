@@ -1,62 +1,79 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../services/api';
 
-export const fetchJobCards = createAsyncThunk('jobCards/fetch', async (params: Record<string, any> = {}, { rejectWithValue }) => {
-  try {
-    const res = await api.get('/jobcards', { params });
-    return res.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to load job cards');
-  }
-});
+type RejectValue = (value: any) => any;
 
-export const fetchJobCard = createAsyncThunk('jobCards/fetchOne', async (id: string, { rejectWithValue }) => {
-  try {
-    const res = await api.get(`/jobcards/${id}`);
-    return res.data.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to load job card');
-  }
-});
-
-export const createJobCard = createAsyncThunk('jobCards/create', async (payload: any, { rejectWithValue }) => {
-  try {
-    const res = await api.post('/jobcards', payload);
-    return res.data.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to create job card');
-  }
-});
-
-export const updateJobCard = createAsyncThunk('jobCards/update', async ({ id, payload }: { id: string; payload: any }, { rejectWithValue }) => {
-  try {
-    const res = await api.put(`/jobcards/${id}`, payload);
-    return res.data.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to update job card');
-  }
-});
-
-export const updateJobStatus = createAsyncThunk(
-  'jobCards/status',
-  async ({ id, status, notes }: { id: string; status: string; notes?: string }, { rejectWithValue }) => {
+export const fetchJobCards = createAsyncThunk(
+  'jobCards/fetch',
+  async (params: Record<string, any> = {}, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
     try {
-      const res = await api.patch(`/jobcards/${id}/status`, { status, notes });
-      return res.data.data;
-    } catch (err) {
-      return rejectWithValue(err.response?.data?.error || 'Failed to update status');
+      const res = await api.get('/jobcards', { params });
+      return res.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load job cards');
     }
   }
 );
 
-export const deleteJobCard = createAsyncThunk('jobCards/delete', async (id: string, { rejectWithValue }) => {
-  try {
-    await api.delete(`/jobcards/${id}`);
-    return id;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to delete job card');
+export const fetchJobCard = createAsyncThunk(
+  'jobCards/fetchOne',
+  async (id: string, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.get(`/jobcards/${id}`);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load job card');
+    }
   }
-});
+);
+
+export const createJobCard = createAsyncThunk(
+  'jobCards/create',
+  async (payload: any, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.post('/jobcards', payload);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to create job card');
+    }
+  }
+);
+
+export const updateJobCard = createAsyncThunk(
+  'jobCards/update',
+  async ({ id, payload }: { id: string; payload: any }, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.put(`/jobcards/${id}`, payload);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to update job card');
+    }
+  }
+);
+
+export const updateJobStatus = createAsyncThunk(
+  'jobCards/status',
+  async ({ id, status, notes }: { id: string; status: string; notes?: string }, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.patch(`/jobcards/${id}/status`, { status, notes });
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to update status');
+    }
+  }
+);
+
+export const deleteJobCard = createAsyncThunk(
+  'jobCards/delete',
+  async (id: string, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      await api.delete(`/jobcards/${id}`);
+      return id;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to delete job card');
+    }
+  }
+);
 
 const jobCardSlice = createSlice({
   name: 'jobCards',

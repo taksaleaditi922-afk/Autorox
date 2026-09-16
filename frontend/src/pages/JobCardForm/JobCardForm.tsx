@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
   Box, Card, CardContent, Typography, TextField, MenuItem, Button, Grid,
   Divider, Radio, RadioGroup, FormControlLabel, FormControl, FormLabel, Accordion, AccordionSummary, AccordionDetails,
@@ -15,9 +15,9 @@ const PRIORITIES = ['Low', 'Medium', 'High', 'Urgent'];
 const FUEL_TYPES = ['Petrol', 'Diesel', 'Electric', 'Hybrid', 'CNG'];
 
 const initialForm = {
-  vehicle: { registrationNumber: '', make: '', model: '', year: '', color: '', fuelType: 'Petrol', odometerReading: '' },
+  vehicle: { registrationNumber: '', make: '', model: '', year: '', color: '', fuelType: 'Petrol', odometerReading: '', vin: '' },
   customer: { name: '', email: '', phone: '', alternatePhone: '', address: '' },
-  service: { type: 'Maintenance', description: '', priority: 'Medium', estimatedDelivery: '' },
+  service: { type: 'Maintenance', description: '', priority: 'Medium', estimatedDelivery: '', specialInstructions: '' },
   insurance: { isClaim: false, companyName: '', claimNumber: '', accidentDate: '', accidentDescription: '' },
   corporate: { isCorporate: false, name: '' },
   notes: '',
@@ -26,9 +26,9 @@ const initialForm = {
 export default function JobCardForm() {
   const { id } = useParams();
   const isEdit = !!id;
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const { current } = useSelector((state) => state.jobCards);
+  const { current } = useAppSelector((state) => state.jobCards);
   const [form, setForm] = useState(initialForm);
 
   useEffect(() => {

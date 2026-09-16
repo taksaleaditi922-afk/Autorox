@@ -1,6 +1,6 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   AppBar, Toolbar, Drawer, List, ListItem, ListItemButton, ListItemIcon,
   ListItemText, Box, IconButton, Typography, Avatar, Menu, MenuItem,
@@ -43,10 +43,10 @@ const NAV = [
 ];
 
 export default function Layout() {
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const t = useT();
-  const user = useSelector((state) => state.auth.user);
+  const user = useAppSelector((state) => state.auth.user);
   const isMobile = useMediaQuery('(max-width:900px)');
   const [open, setOpen] = useState(!isMobile);
   const [anchorEl, setAnchorEl] = useState(null);

@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { useDebounce } from '../../utils/useDebounce';
+import type { RootState } from '../../store/store';
 import {
   Box, Card, CardContent, Typography, TextField, MenuItem, Button, IconButton,
   Tabs, Tab, Table, TableHead, TableRow, TableBody, TableCell, TableContainer,
@@ -96,10 +97,10 @@ interface InventoryProps {
 }
 
 export default function Inventory(props: InventoryProps) {
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const t = useT();
-  const state = useSelector((s) => s.inventory);
+  const state = useAppSelector((s) => s.inventory);
 
   const [tab, setTab] = useState<InventoryTabId>('stock');
   const [filters, setFilters] = useState<InventoryFilters>(getDefaultFilters);
@@ -726,14 +727,14 @@ function StockTab({
   totalDisplayed: number;
   visibleCount: number;
   rowsPerPageOptions: number[];
-  state: ReturnType<typeof useSelector>;
+  state: RootState['inventory'];
   columns: typeof COLUMNS;
   openDetail: (item: InventoryItem) => void;
   openEditModal: (item: InventoryItem) => void;
   openMovementModal: (item: InventoryItem) => void;
   refreshTabData: (tab: 'stock') => void;
 }) {
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
   const workshopOptions = useMemo(() => {
     const set = new Set(state.items.map((i) => i.inventory?.workshopName).filter(Boolean));
     return ['All Workshops', ...Array.from(set)];
@@ -1086,7 +1087,7 @@ function StockAlertTab({
   setAlertTypeFilter,
 }: {
   t: ReturnType<typeof useT>;
-  state: ReturnType<typeof useSelector>;
+  state: RootState['inventory'];
   alertTypeFilter: string | null;
   setAlertTypeFilter: (v: string | null) => void;
 }) {

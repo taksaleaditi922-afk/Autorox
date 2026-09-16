@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
   Box, Card, CardContent, Typography, TextField, MenuItem, Button, Table, TableHead, TableRow,
   TableBody, TableCell, TableContainer, IconButton, Dialog, DialogTitle, DialogContent,
@@ -28,10 +28,10 @@ const ITEM_ROWS = [{ productId: '', productCode: '', productName: '', quantity: 
 
 export default function BillDetails() {
   const { id } = useParams();
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const { current, loading, paymentHistory } = useSelector((state) => state.sales);
-  const { user } = useSelector((state) => state.auth);
+  const { current, loading, paymentHistory } = useAppSelector((state) => state.sales);
+  const { user } = useAppSelector((state) => state.auth);
 
   const [editing, setEditing] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
