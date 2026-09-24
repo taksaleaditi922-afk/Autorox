@@ -10,7 +10,6 @@ import MenuIcon from '@mui/icons-material/Menu';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import AssignmentIcon from '@mui/icons-material/Assignment';
-import AddCardIcon from '@mui/icons-material/AddCard';
 import ReceiptIcon from '@mui/icons-material/Receipt';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import PeopleIcon from '@mui/icons-material/People';
@@ -31,7 +30,6 @@ const drawerWidth = 280;
 const NAV = [
   { labelKey: 'nav.dashboard', path: '/', icon: DashboardIcon, sectionKey: 'section.overview' },
   { labelKey: 'nav.jobCards', path: '/jobcards', icon: AssignmentIcon, sectionKey: 'section.operations' },
-  { labelKey: 'nav.newJobCard', path: '/jobcards/new', icon: AddCardIcon, sectionKey: 'section.operations' },
   { labelKey: 'nav.estimates', path: '/estimates', icon: ReceiptIcon, sectionKey: 'section.operations' },
   { labelKey: 'nav.sellProducts', path: '/sell', icon: ShoppingCartIcon, sectionKey: 'section.operations' },
   { labelKey: 'nav.customers', path: '/customers', icon: PeopleIcon, sectionKey: 'section.directory' },

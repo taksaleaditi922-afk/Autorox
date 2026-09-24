@@ -2,6 +2,13 @@ import Vehicle, { FUEL_TYPES } from '../models/Vehicle.js';
 import Customer from '../models/Customer.js';
 import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import {
+  RegistryNotConfiguredError,
+  RegistryNotFoundError,
+  RegistryUnavailableError,
+  lookupVehicleInRegistry,
+  normalizeRegistration,
+} from '../services/vehicleRegistry.js';
 
 // GET /api/vehicles?q=&page=&limit=&owner=
 export const getVehicles = asyncHandler(async (req, res) => {
@@ -39,6 +46,55 @@ export const createVehicle = asyncHandler(async (req, res) => {
     await Customer.findByIdAndUpdate(body.owner, { $addToSet: { vehicles: vehicle._id } });
   }
   res.status(201).json({ success: true, data: vehicle });
+});
+
+// GET /api/vehicles/lookup/:regNo
+//
+// Resolves a registration number in this order:
+//   1. the workshop's own vehicle master
+//   2. the registry provider configured on the server (cached)
+//
+// Every failure answers with an explicit `code` so the client can tell "we do
+// not have this vehicle" apart from "no provider is configured here", which
+// are very different messages for the advisor to read.
+const REGISTRATION_PATTERN = /^[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{1,4}$/;
+
+export const lookupVehicleByReg = asyncHandler(async (req, res) => {
+  const reg = normalizeRegistration(req.params.regNo || '');
+  if (!REGISTRATION_PATTERN.test(reg)) {
+    return res.status(400).json({
+      success: false,
+      code: 'INVALID_REGISTRATION',
+      error: 'Enter a valid registration number, e.g. MH12AB1234',
+    });
+  }
+
+  // 1. Workshop master — free, instant and authoritative for our own records.
+  const local = await Vehicle.findOne({ registrationNumber: reg }).lean();
+  if (local) {
+    return res.json({ success: true, data: { source: 'workshop', vehicle: local } });
+  }
+
+  // 2. Registry provider.
+  try {
+    const { vehicle, source } = await lookupVehicleInRegistry(reg);
+    return res.json({ success: true, data: { source, vehicle: { ...vehicle, registrationNumber: reg } } });
+  } catch (err) {
+    if (err instanceof RegistryNotConfiguredError) {
+      return res.status(501).json({
+        success: false,
+        code: 'NOT_CONFIGURED',
+        error: 'No vehicle registry provider is configured on the server.',
+      });
+    }
+    if (err instanceof RegistryNotFoundError) {
+      return res.status(404).json({ success: false, code: 'NOT_FOUND', error: err.message });
+    }
+    if (err instanceof RegistryUnavailableError) {
+      return res.status(502).json({ success: false, code: 'UNAVAILABLE', error: err.message });
+    }
+    throw err;
+  }
 });
 
 // GET /api/vehicles/byReg/:regNo

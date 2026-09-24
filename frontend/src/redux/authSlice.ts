@@ -8,6 +8,11 @@ export const login = createAsyncThunk('auth/login', async ({ email, password }, 
     localStorage.setItem('user', JSON.stringify(res.data.user));
     return res.data.user;
   } catch (err) {
+    // No response at all means the request never reached the API (backend down,
+    // proxy misconfigured) — say so instead of a bare "Login failed".
+    if (!err?.response) {
+      return rejectWithValue('Cannot reach the server. Make sure the API is running, then try again.');
+    }
     return rejectWithValue(err.response?.data?.error || 'Login failed');
   }
 });

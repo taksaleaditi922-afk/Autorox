@@ -9,7 +9,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "seed": "tsx src/seed/seed.ts",
-    "test": "echo \"No tests configured yet\" && exit 0"
+    "test": "vitest run"
   },
   "keywords": [
     "mern",
@@ -43,6 +43,7 @@
     "@types/node": "^22.10.2",
     "nodemon": "^3.1.4",
     "tsx": "^4.19.2",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.9"
   }
 }

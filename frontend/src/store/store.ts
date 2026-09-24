@@ -6,6 +6,7 @@ import productsReducer from '../redux/productsSlice';
 import salesReducer from '../redux/salesSlice';
 import languageReducer from '../redux/languageSlice';
 import inventoryReducer from '../redux/inventorySlice';
+import estimateReducer from '../redux/estimateSlice';
 
 export const store = configureStore({
   reducer: {
@@ -16,6 +17,7 @@ export const store = configureStore({
     sales: salesReducer,
     language: languageReducer,
     inventory: inventoryReducer,
+    estimate: estimateReducer,
   },
 });
 

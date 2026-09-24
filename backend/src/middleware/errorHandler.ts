@@ -3,13 +3,17 @@ import env from '../config/env.js';
 
 /**
  * Central error handler. Always responds with structured JSON:
- *   { success, message, errors?, stack? }
+ *   { success: false, error: message, errors?: unknown }
  */
 // eslint-disable-next-line no-unused-vars
 export const errorHandler = (err, req, res, next) => {
   let statusCode = err.statusCode || 500;
   let message = err.message || 'Internal Server Error';
-  let errors = null;
+  let errors = err.details || null;
+  if (err.name === 'VersionError') {
+    statusCode = 409;
+    message = 'This job card changed while you were editing. Refresh and try again.';
+  }
 
   // Mongoose validation error
   if (err.name === 'ValidationError') {
@@ -37,15 +41,23 @@ export const errorHandler = (err, req, res, next) => {
   // Multer file size / type errors
   if (err.name === 'MulterError') {
     statusCode = 400;
-    message = `Upload error: ${err.message}`;
+    message =
+      err.code === 'LIMIT_FILE_SIZE'
+        ? 'Upload error: file is larger than the allowed limit'
+        : `Upload error: ${err.message}`;
+  }
+
+  // Rejected by the upload fileFilter (plain Error, not a MulterError).
+  if (!err.statusCode && !err.name && /File type not allowed/i.test(String(err.message))) {
+    statusCode = 400;
   }
 
   const response = {
     success: false,
     error: message,
-  };
+  } as Record<string, unknown>;
   if (errors) response.errors = errors;
-  if (env.nodeEnv === 'development' && err.stack) {
+  if (env.nodeEnv === 'development' && typeof err.stack === 'string') {
     response.stack = err.stack;
   }
 

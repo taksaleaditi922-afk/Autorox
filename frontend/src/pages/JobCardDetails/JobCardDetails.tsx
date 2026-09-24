@@ -8,9 +8,7 @@ import {
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import EditIcon from '@mui/icons-material/Edit';
-import SaveIcon from '@mui/icons-material/Save';
-import CancelIcon from '@mui/icons-material/Cancel';
-import PrintIcon from '@mui/icons-material/Print';
+import SaveIcon from '@mui/icons-material/Save';import CancelIcon from '@mui/icons-material/Cancel';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import HistoryIcon from '@mui/icons-material/History';
@@ -21,6 +19,7 @@ import StatusBadge from '../../components/StatusBadge';
 import PriorityBadge from '../../components/PriorityBadge';
 import Loader from '../../components/Loader';
 import { SectionTitle, Row } from '../../components/JobCardDetails/DetailsFields';
+import JobCardDocumentsMenu from '../../components/jobCard/JobCardDocumentsMenu';
 import { formatDate, formatDateTime } from '../../utils/format';
 
 const STATUS_OPTIONS = ['New', 'In Progress', 'Pending Parts', 'Pending Approval', 'Ready for Delivery', 'Delivered', 'On Hold', 'Cancelled'];
@@ -124,11 +123,23 @@ export default function JobCardDetails() {
     }
   };
 
-  const handlePrint = () => window.print();
   if (loading) return <Loader label="Loading job card..." />;
   if (!current) return <Typography color="error">Job card not found.</Typography>;
 
   const jc = current;
+
+  // Issuing a proforma invoice records the invoice number on the job card so the
+  // list view can show it as billed.
+  const handleIssueInvoice = async (patch: { number: string; status: string; issuedAt: string }) => {
+    const previous = jc.invoice || {};
+    if (previous.number === patch.number) return;
+    const res = await dispatch(updateJobCard({ id: jc._id, payload: { invoice: { ...previous, ...patch } } }));
+    if (updateJobCard.fulfilled.match(res)) {
+      dispatch(showToast({ severity: 'success', message: `Invoice ${patch.number} issued` }));
+    } else {
+      dispatch(showToast({ severity: 'error', message: res.payload || 'Could not record the invoice' }));
+    }
+  };
   const timeline = [...(jc.statusHistory || [])].reverse();
   const data = editing ? editForm : jc;
 
@@ -194,7 +205,7 @@ export default function JobCardDetails() {
         ) : (
           <>
             <Button variant="contained" startIcon={<EditIcon />} onClick={startEditing} sx={{ borderRadius: 2.5 }}>Edit</Button>
-            <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrint} sx={{ borderRadius: 2.5 }}>Print</Button>
+            <JobCardDocumentsMenu jobCard={jc} onIssueInvoice={handleIssueInvoice} />
             <Button variant="outlined" color="primary" onClick={openStatusDialog} sx={{ borderRadius: 2.5 }}>Change Status</Button>
           </>
         )}

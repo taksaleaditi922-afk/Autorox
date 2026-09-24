@@ -34,6 +34,10 @@ const computeTotals = (parts, labor, other, discount, taxRate) => {
   };
 };
 
+/** Never return the stored identity number or a storage path to a client. */
+const maskEstimate = (estimate) =>
+  typeof estimate?.toMaskedJSON === 'function' ? estimate.toMaskedJSON() : estimate;
+
 // POST /api/estimates
 export const createEstimate = asyncHandler(async (req, res) => {
   const body = req.body;
@@ -67,18 +71,42 @@ export const createEstimate = asyncHandler(async (req, res) => {
     createdBy: req.user?.email || 'System',
   });
   await estimate.save();
-  res.status(201).json({ success: true, data: estimate });
+  res.status(201).json({ success: true, data: maskEstimate(estimate) });
 });
 
-// GET /api/estimates?jobCardId=&status=
+// GET /api/estimates?q=&status=&jobCardId=&page=&limit=
 export const getEstimates = asyncHandler(async (req, res) => {
+  const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+  const limit = Math.min(200, Math.max(1, parseInt(req.query.limit, 10) || 20));
+
   const filter = {};
   if (req.query.jobCardId) filter.jobCardId = req.query.jobCardId;
   if (req.query.status && ESTIMATE_STATUSES.includes(req.query.status)) filter.status = req.query.status;
-  const estimates = await Estimate.find(filter)
-    .sort('-createdAt')
-    .populate('jobCardId', 'jobCardNumber vehicle customer');
-  res.json({ success: true, data: estimates });
+  if (req.query.q) {
+    const safe = String(req.query.q).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rx = new RegExp(safe, 'i');
+    filter.$or = [
+      { estimateNumber: rx },
+      { 'customer.name': rx },
+      { 'customer.phone': rx },
+      { 'vehicle.registrationNumber': rx },
+    ];
+  }
+
+  const [estimates, total] = await Promise.all([
+    Estimate.find(filter)
+      .sort('-createdAt')
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .populate('jobCardId', 'jobCardNumber vehicle customer'),
+    Estimate.countDocuments(filter),
+  ]);
+
+  res.json({
+    success: true,
+    data: estimates.map(maskEstimate),
+    pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) },
+  });
 });
 
 // GET /api/estimates/:id
@@ -88,7 +116,7 @@ export const getEstimate = asyncHandler(async (req, res) => {
     'jobCardNumber vehicle customer'
   );
   if (!estimate) throw new ApiError(404, 'Estimate not found');
-  res.json({ success: true, data: estimate });
+  res.json({ success: true, data: maskEstimate(estimate) });
 });
 
 // PUT /api/estimates/:id
@@ -117,7 +145,7 @@ export const updateEstimate = asyncHandler(async (req, res) => {
   estimate.tax.amount = totals.taxAmount;
   estimate.grandTotal = totals.grandTotal;
   await estimate.save();
-  res.json({ success: true, data: estimate });
+  res.json({ success: true, data: maskEstimate(estimate) });
 });
 
 // PATCH /api/estimates/:id/approve
@@ -130,12 +158,14 @@ export const approveEstimate = asyncHandler(async (req, res) => {
   estimate.approvalHistory = estimate.approvalHistory || [];
   estimate.approvalHistory.push({ status: 'Approved', by: req.user?.email || 'Customer', at: new Date() });
   await estimate.save();
-  await JobCard.findByIdAndUpdate(estimate.jobCardId, {
-    'estimate.estimateId': estimate._id,
-    'estimate.status': 'Approved',
-    'estimate.totalAmount': estimate.grandTotal,
-  });
-  res.json({ success: true, data: estimate });
+  if (estimate.jobCardId) {
+    await JobCard.findByIdAndUpdate(estimate.jobCardId, {
+      'estimate.estimateId': estimate._id,
+      'estimate.status': 'Approved',
+      'estimate.totalAmount': estimate.grandTotal,
+    });
+  }
+  res.json({ success: true, data: maskEstimate(estimate) });
 });
 
 // PATCH /api/estimates/:id/reject
@@ -146,7 +176,7 @@ export const rejectEstimate = asyncHandler(async (req, res) => {
   estimate.approvalHistory = estimate.approvalHistory || [];
   estimate.approvalHistory.push({ status: 'Rejected', by: req.user?.email || 'Customer', at: new Date() });
   await estimate.save();
-  res.json({ success: true, data: estimate });
+  res.json({ success: true, data: maskEstimate(estimate) });
 });
 
 // POST /api/estimates/:id/send-email
@@ -160,8 +190,8 @@ export const sendEstimateEmail = asyncHandler(async (req, res) => {
 export const convertToInvoice = asyncHandler(async (req, res) => {
   const estimate = await Estimate.findById(req.params.id);
   if (!estimate) throw new ApiError(404, 'Estimate not found');
-  if (estimate.status !== 'Approved') {
-    throw new ApiError(400, 'Only approved estimates can be converted to invoices');
+  if (!['Approved', 'Accepted'].includes(estimate.status)) {
+    throw new ApiError(400, 'Only approved or accepted estimates can be converted to invoices');
   }
   estimate.status = 'Converted to Invoice';
   estimate.approvalHistory = estimate.approvalHistory || [];
@@ -171,11 +201,13 @@ export const convertToInvoice = asyncHandler(async (req, res) => {
     at: new Date(),
   });
   await estimate.save();
-  await JobCard.findByIdAndUpdate(estimate.jobCardId, {
-    'estimate.estimateId': estimate._id,
-    'estimate.status': 'Converted to Invoice',
-    'estimate.totalAmount': estimate.grandTotal,
-    status: JOB_STATUS.IN_PROGRESS,
-  });
-  res.json({ success: true, data: estimate, message: 'Estimate converted to invoice' });
+  if (estimate.jobCardId) {
+    await JobCard.findByIdAndUpdate(estimate.jobCardId, {
+      'estimate.estimateId': estimate._id,
+      'estimate.status': 'Converted to Invoice',
+      'estimate.totalAmount': estimate.grandTotal,
+      status: JOB_STATUS.IN_PROGRESS,
+    });
+  }
+  res.json({ success: true, data: maskEstimate(estimate), message: 'Estimate converted to invoice' });
 });

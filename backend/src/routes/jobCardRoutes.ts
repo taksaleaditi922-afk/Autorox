@@ -2,12 +2,16 @@ import express from 'express';
 import expressValidator from 'express-validator';
 import {
   getJobCards,
+  getJobCardStats,
   createJobCard,
   getJobCard,
   updateJobCard,
   deleteJobCard,
   updateJobCardStatus,
   assignAdvisor,
+  recordAdvance,
+  shareApproval,
+  updateApproval,
 } from '../controllers/jobCardController.js';
 import { uploadDocument, getDocuments, deleteDocument, printJobCard } from '../controllers/documentController.js';
 import { protect } from '../middleware/auth.js';
@@ -22,23 +26,26 @@ router.use(protect);
 
 router.get('/', getJobCards);
 
+// Declared before `/:id` so "stats" is never treated as a job card id.
+router.get('/stats', getJobCardStats);
+
+// Only the fields the wizard cannot skip are required. Make/model/year are
+// auto-filled from the vehicle lookup, so they stay optional here.
 router.post(
   '/',
   [
     body('vehicle.registrationNumber').notEmpty().withMessage('Vehicle registration is required'),
-    body('vehicle.make').notEmpty().withMessage('Vehicle make is required'),
-    body('vehicle.model').notEmpty().withMessage('Vehicle model is required'),
-    body('vehicle.year').isInt({ min: 1900, max: 2100 }).withMessage('Valid vehicle year is required'),
-    body('vehicle.odometerReading').isNumeric().withMessage('Odometer reading is required'),
+    body('vehicle.odometerReading')
+      .notEmpty()
+      .withMessage('Odometer reading is required')
+      .bail()
+      .isNumeric()
+      .withMessage('Odometer reading must be a number'),
     body('customer.name').notEmpty().withMessage('Customer name is required'),
     body('customer.phone')
+      .customSanitizer((v) => String(v ?? '').replace(/\D/g, '').replace(/^91(?=\d{10}$)/, ''))
       .matches(/^\d{10}$/)
       .withMessage('Customer phone must be a 10-digit number'),
-    body('service.description')
-      .trim()
-      .isLength({ min: 5, max: 500 })
-      .withMessage('Service description is required (5-500 chars)'),
-    body('service.estimatedDelivery').notEmpty().withMessage('Estimated delivery date is required'),
   ],
   validate,
   createJobCard
@@ -86,6 +93,33 @@ router.patch(
   [param('id').isMongoId().withMessage('Invalid job card id'), body('advisorId').notEmpty()],
   validate,
   assignAdvisor
+);
+
+// --- Service list: advance payment + customer approval ---------------------
+
+// Record a partial payment. Amount 0 clears the advance.
+router.patch(
+  '/:id/advance',
+  [
+    param('id').isMongoId().withMessage('Invalid job card id'),
+    body('amount').isNumeric().withMessage('Advance amount must be a number'),
+  ],
+  validate,
+  recordAdvance
+);
+
+// Send the itemised service list to the customer and return the approval link.
+router.post('/:id/approval/share', param('id').isMongoId().withMessage('Invalid job card id'), validate, shareApproval);
+
+// Record the outcome at the desk (approved / changes requested / skipped).
+router.patch(
+  '/:id/approval',
+  [
+    param('id').isMongoId().withMessage('Invalid job card id'),
+    body('status').notEmpty().withMessage('Approval status is required'),
+  ],
+  validate,
+  updateApproval
 );
 
 export default router;

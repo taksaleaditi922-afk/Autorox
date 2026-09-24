@@ -1,177 +1,276 @@
-import { useEffect, useState } from 'react';
+// ---------------------------------------------------------------------------
+// Estimates list — entry point into the 4-step estimate workflow.
+// ---------------------------------------------------------------------------
+
+import { useCallback, useEffect, useState } from 'react';
 import {
-  Box, Card, Typography, Table, TableHead, TableRow, TableCell, TableBody,
-  TableContainer, Button, Dialog, DialogTitle, DialogContent, DialogActions,
-  TextField, MenuItem, Divider,
+  Box,
+  Button,
+  Card,
+  Chip,
+  InputAdornment,
+  MenuItem,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TablePagination,
+  TableRow,
+  TextField,
+  Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import SearchIcon from '@mui/icons-material/Search';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import VisibilityOutlinedIcon from '@mui/icons-material/VisibilityOutlined';
+import { useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import api from '../../services/api';
-import Loader from '../../components/Loader';
-import { formatDate, formatCurrency } from '../../utils/format';
 import { showToast } from '../../redux/uiSlice';
-
-const EMPTY_FORM = {
-  jobCardId: '',
-  items: { parts: [], labor: [], other: [] },
-  discount: { type: 'Fixed', value: 0, reason: '' },
-  tax: { rate: 18 },
-  notes: '',
-  terms: '',
-};
+import * as estimateService from '../../services/estimate/estimateService';
+import { ESTIMATE_STATUSES, STATUS_COLORS } from '../../services/estimate/config';
+import Loader from '../../components/Loader';
+import { EmptyState, StatusChip } from '../../components/estimate/primitives';
+import { formatDate } from '../../utils/format';
+import { formatMoney } from '../../utils/estimateMath';
+import { useDebounce } from '../../utils/useDebounce';
 
 export default function Estimates() {
+  const navigate = useNavigate();
   const dispatch = useDispatch();
-  const [data, setData] = useState([]);
-  const [jobCards, setJobCards] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [dialog, setDialog] = useState(false);
-  const [form, setForm] = useState({ ...EMPTY_FORM });
 
-  const load = async () => {
+  const [rows, setRows] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState('');
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [total, setTotal] = useState(0);
+  const debouncedQ = useDebounce(q, 400);
+
+  const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const [estRes, jcRes] = await Promise.all([
-        api.get('/estimates'),
-        api.get('/jobcards', { params: { limit: 100 } }),
-      ]);
-      setData(estRes.data.data);
-      setJobCards(jcRes.data.data);
-    } catch (err) {
-      console.error(err);
+      const res = await estimateService.listEstimates({
+        q: debouncedQ,
+        status: status || undefined,
+        page: page + 1,
+        limit: rowsPerPage,
+      });
+      setRows(res.data);
+      setTotal(res.pagination.total);
+    } catch (err: any) {
+      setRows([]);
+      setTotal(0);
+      setError(err?.response?.data?.error || 'Could not load estimates. Check your connection and try again.');
     } finally {
       setLoading(false);
     }
-  };
+  }, [debouncedQ, status, page, rowsPerPage]);
 
   useEffect(() => {
-    load();
+    void load();
+  }, [load]);
+
+  // Warm the wizard bundle while the browser is idle so "New Estimate" opens
+  // without waiting on a chunk download.
+  useEffect(() => {
+    const preload = () => void import('../EstimateWizard/EstimateWizard');
+    if (typeof window.requestIdleCallback === 'function') {
+      const handle = window.requestIdleCallback(preload);
+      return () => window.cancelIdleCallback(handle);
+    }
+    const timer = window.setTimeout(preload, 400);
+    return () => window.clearTimeout(timer);
   }, []);
 
-  const setPart = (i, key, value) => {
-    const parts = [...(form.items.parts || [])];
-    parts[i] = { ...parts[i], [key]: value };
-    setForm((f) => ({ ...f, items: { ...f.items, parts } }));
-  };
-
-  const computeTotals = () => {
-    const partsTotal = (form.items.parts || []).reduce((s, p) => s + (p.quantity || 0) * (p.unitCost || 0), 0);
-    const discountValue = form.discount?.type === 'Percentage'
-      ? (partsTotal * (form.discount?.value || 0)) / 100
-      : (form.discount?.value || 0);
-    const taxable = Math.max(partsTotal - discountValue, 0);
-    const tax = (taxable * (form.tax?.rate || 0)) / 100;
-    return { partsTotal, discountValue, taxable, tax, total: taxable + tax };
-  };
-
-  const handleSave = async (status) => {
-    const payload = {
-      jobCardId: form.jobCardId,
-      status,
-      items: {
-        parts: (form.items.parts || []).map((p) => ({ ...p, totalCost: (p.quantity || 0) * (p.unitCost || 0) })),
-        labor: (form.items.labor || []),
-        other: (form.items.other || []),
-      },
-      discount: form.discount,
-      tax: form.tax,
-      notes: form.notes,
-      terms: form.terms,
-    };
-    try {
-      await api.post('/estimates', payload);
-      dispatch(showToast({ severity: 'success', message: `Estimate ${status === 'Draft' ? 'saved as draft' : 'submitted'}` }));
-      setDialog(false);
-      load();
-    } catch (err) {
-      dispatch(showToast({ severity: 'error', message: err.response?.data?.error || 'Failed to save estimate' }));
-    }
-  };
-
-  const totals = computeTotals();
+  const grandTotal = (doc: any) => doc?.totals?.grandTotal ?? doc?.grandTotal ?? 0;
 
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography variant="h5" fontWeight={700}>Estimates</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>Create and manage service cost estimates</Typography>
+          <Typography variant="h5" fontWeight={700}>
+            Estimates
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
+            Build, review and share vehicle service quotations
+          </Typography>
         </Box>
-        <Button variant="contained" startIcon={<AddIcon />} onClick={() => setDialog(true)}>New Estimate</Button>
+        <Button variant="contained" startIcon={<AddIcon />} onClick={() => navigate('/estimates/new')}>
+          New Estimate
+        </Button>
       </Box>
 
+      <Card sx={{ p: 2, mb: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+        <TextField
+          size="small"
+          label="Search"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setPage(0);
+          }}
+          placeholder="Estimate number, customer, phone or registration"
+          sx={{ flexGrow: 1, minWidth: 240 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <SearchIcon fontSize="small" />
+              </InputAdornment>
+            ),
+          }}
+        />
+        <TextField
+          select
+          size="small"
+          label="Status"
+          value={status}
+          onChange={(e) => {
+            setStatus(e.target.value);
+            setPage(0);
+          }}
+          sx={{ minWidth: 180 }}
+        >
+          <MenuItem value="">All statuses</MenuItem>
+          {ESTIMATE_STATUSES.map((s) => (
+            <MenuItem key={s} value={s}>
+              {s}
+            </MenuItem>
+          ))}
+          <MenuItem value="Approved">Approved</MenuItem>
+          <MenuItem value="Converted to Invoice">Converted to Invoice</MenuItem>
+        </TextField>
+        <Button startIcon={<RefreshIcon />} onClick={() => void load()}>
+          Refresh
+        </Button>
+      </Card>
+
+      {error && (
+        <Card sx={{ p: 2, mb: 2, borderLeft: '4px solid', borderColor: 'error.main' }}>
+          <Typography variant="body2" color="error.main" sx={{ mb: 1 }}>
+            {error}
+          </Typography>
+          <Button size="small" onClick={() => void load()}>
+            Try again
+          </Button>
+        </Card>
+      )}
+
       <Card>
-        {loading ? <Loader label="Loading estimates..." /> : (
-          <TableContainer>
-            <Table size="small">
-              <TableHead>
-                <TableRow>
-                  <TableCell>Estimate #</TableCell><TableCell>Job Card</TableCell>
-                  <TableCell>Status</TableCell><TableCell align="right">Grand Total</TableCell>
-                  <TableCell>Valid Until</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {data.map((e) => (
-                  <TableRow key={e._id} hover>
-                    <TableCell>{e.estimateNumber}</TableCell>
-                    <TableCell>{e.jobCardId?.jobCardNumber || '—'}</TableCell>
-                    <TableCell>{e.status}</TableCell>
-                    <TableCell align="right">{formatCurrency(e.grandTotal)}</TableCell>
-                    <TableCell>{formatDate(e.validUntil)}</TableCell>
+        {loading ? (
+          <Loader label="Loading estimates..." />
+        ) : rows.length === 0 ? (
+          <Box sx={{ p: 3 }}>
+            <EmptyState
+              title="No estimates yet"
+              description="Start a new estimate to capture the vehicle, run an inspection and quote the work."
+              action={
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  onClick={() => {
+                    navigate('/estimates/new');
+                    dispatch(showToast({ severity: 'info', message: 'Starting a new estimate draft' }));
+                  }}
+                >
+                  Create Estimate
+                </Button>
+              }
+            />
+          </Box>
+        ) : (
+          <>
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Estimate #</TableCell>
+                    <TableCell>Customer</TableCell>
+                    <TableCell>Vehicle</TableCell>
+                    <TableCell>Status</TableCell>
+                    <TableCell align="right">Grand Total</TableCell>
+                    <TableCell>Valid Until</TableCell>
+                    <TableCell align="right">Actions</TableCell>
                   </TableRow>
-                ))}
-                {data.length === 0 && (
-                  <TableRow>                    <TableCell colSpan={5} align="center" sx={{ py: 5 }}><Typography variant="body2" color="text.secondary">No estimates found.</Typography></TableCell></TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </TableContainer>
+                </TableHead>
+                <TableBody>
+                  {rows.map((row) => {
+                    const vehicleLabel = [row.vehicle?.brand, row.vehicle?.model].filter(Boolean).join(' ');
+                    return (
+                      <TableRow key={row._id || row.id} hover>
+                        <TableCell>
+                          <Typography variant="body2" fontWeight={700}>
+                            {row.estimateNumber}
+                          </Typography>
+                          {row.jobCardId?.jobCardNumber && (
+                            <Typography variant="caption" color="text.secondary">
+                              Job card {row.jobCardId.jobCardNumber}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {row.customer?.name || row.jobCardId?.customer?.name || '—'}
+                          {row.customer?.phone && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                              {row.customer.phone}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {row.vehicle?.registrationNumber || row.jobCardId?.vehicle?.registrationNumber || '—'}
+                          {vehicleLabel && (
+                            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                              {vehicleLabel}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Chip
+                            size="small"
+                            label={row.status}
+                            color={(STATUS_COLORS[row.status] as any) || 'default'}
+                            variant={STATUS_COLORS[row.status] === 'default' ? 'outlined' : 'filled'}
+                          />
+                        </TableCell>
+                        <TableCell align="right">{formatMoney(grandTotal(row))}</TableCell>
+                        <TableCell>{formatDate(row.metadata?.validUntil || row.validUntil)}</TableCell>
+                        <TableCell align="right">
+                          <Button
+                            size="small"
+                            startIcon={<VisibilityOutlinedIcon fontSize="small" />}
+                            onClick={() => navigate(`/estimates/${row._id || row.id}`)}
+                          >
+                            Open
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <TablePagination
+              component="div"
+              count={total}
+              page={page}
+              onPageChange={(_e, next) => setPage(next)}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={(e) => {
+                setRowsPerPage(Number(e.target.value));
+                setPage(0);
+              }}
+              rowsPerPageOptions={[10, 25, 50]}
+            />
+          </>
         )}
       </Card>
 
-      <Dialog open={dialog} onClose={() => setDialog(false)} fullWidth maxWidth="md">
-        <DialogTitle>Create Estimate</DialogTitle>
-        <DialogContent>
-          <TextField select fullWidth label="Job Card" value={form.jobCardId || ''} onChange={(e) => setForm((f) => ({ ...f, jobCardId: e.target.value }))} margin="normal">
-            {jobCards.map((jc) => <MenuItem key={jc._id} value={jc._id}>{jc.jobCardNumber} · {jc.vehicle?.registrationNumber}</MenuItem>)}
-          </TextField>
-
-          <Typography variant="subtitle1" fontWeight={600} mt={2}>Parts</Typography>
-          {(form.items.parts || []).map((p, i) => (
-            <Box key={i} sx={{ display: 'flex', gap: 1, mb: 1, flexWrap: 'wrap' }}>
-              <TextField size="small" label="Part" sx={{ flex: 2, minWidth: 140 }} value={p.name || ''} onChange={(e) => setPart(i, 'name', e.target.value)} />
-              <TextField size="small" label="Qty" type="number" sx={{ width: 70 }} value={p.quantity || ''} onChange={(e) => setPart(i, 'quantity', e.target.value)} />
-              <TextField size="small" label="Unit Cost" type="number" sx={{ width: 110 }} value={p.unitCost || ''} onChange={(e) => setPart(i, 'unitCost', e.target.value)} />
-              <Typography sx={{ alignSelf: 'center' }}>= {(p.quantity || 0) * (p.unitCost || 0)}</Typography>
-            </Box>
-          ))}
-          <Button size="small" variant="outlined" onClick={() => setForm((f) => ({ ...f, items: { ...f.items, parts: [...f.items.parts, { name: '', quantity: 1, unitCost: 0 }] } }))}>+ Add Part</Button>
-
-          <Divider sx={{ my: 2 }} />
-          <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
-            <TextField label="Discount Type" select value={form.discount?.type} onChange={(e) => setForm((f) => ({ ...f, discount: { ...f.discount, type: e.target.value } }))} size="small">
-              <MenuItem value="Fixed">Fixed</MenuItem><MenuItem value="Percentage">Percentage</MenuItem>
-            </TextField>
-            <TextField label="Discount Value" size="small" sx={{ width: 110 }} type="number" value={form.discount?.value || ''} onChange={(e) => setForm((f) => ({ ...f, discount: { ...f.discount, value: +e.target.value } }))} />
-            <TextField label="Tax Rate (%)" size="small" sx={{ width: 110 }} type="number" value={form.tax?.rate || ''} onChange={(e) => setForm((f) => ({ ...f, tax: { ...f.tax, rate: +e.target.value } }))} />
-          </Box>
-
-          <Box sx={{ mt: 2, p: 1.5, bgcolor: '#f8fafc', borderRadius: 2 }}>
-            <Typography variant="body2">Parts Total: {formatCurrency(totals.partsTotal)}</Typography>
-            <Typography variant="body2">Discount: -{formatCurrency(totals.discountValue)}</Typography>
-            <Typography variant="body2">Tax ({form.tax?.rate || 0}%): {formatCurrency(totals.tax)}</Typography>
-            <Typography variant="h6" fontWeight={700}>Grand Total: {formatCurrency(totals.total)}</Typography>
-          </Box>
-
-          <TextField fullWidth label="Notes" value={form.notes || ''} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} margin="normal" multiline minRows={2} />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setDialog(false)}>Cancel</Button>
-          <Button variant="outlined" onClick={() => handleSave('Draft')}>Save as Draft</Button>
-          <Button variant="contained" onClick={() => handleSave('Pending Approval')}>Submit Estimate</Button>
-        </DialogActions>
-      </Dialog>
+      <Box sx={{ mt: 2 }}>
+        <StatusChip label="Tip: drafts autosave while you work" color="info" />
+      </Box>
     </Box>
   );
 }

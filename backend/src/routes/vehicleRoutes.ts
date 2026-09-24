@@ -4,6 +4,7 @@ import {
   getVehicles,
   getVehicle,
   getVehicleByReg,
+  lookupVehicleByReg,
   createVehicle,
   updateVehicle,
 } from '../controllers/vehicleController.js';
@@ -16,6 +17,8 @@ const { body, param } = expressValidator;
 router.use(protect);
 
 router.get('/', getVehicles);
+// Static segments before /:id — `/lookup/:regNo` must not be read as an id.
+router.get('/lookup/:regNo', lookupVehicleByReg);
 router.get('/byReg/:regNo', getVehicleByReg);
 router.post(
   '/',

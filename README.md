@@ -89,6 +89,42 @@ Email:    admin@autorox.in
 Password: admin123
 ```
 
+### Vehicle registry lookup (optional)
+
+`GET /api/vehicles/lookup/:regNo` resolves a registration number in two steps: the workshop's own vehicle master first, then the registry provider configured **on the server**. Keeping the call server-side means the provider key never reaches the browser, and every advisor shares one cached answer per number.
+
+With nothing configured the endpoint answers `NOT_CONFIGURED` and the estimate wizard falls back to its built-in offline adapter, so the workflow stays usable. To use a real provider, set these in `backend/.env`:
+
+| Variable | Example | Notes |
+|---|---|---|
+| `VEHICLE_REGISTRY_URL` | `https://kyc-api.example.com/api/v1/vehicle/rc/{reg}` | `{reg}` is replaced with the number. Without it the number is appended as a query parameter (GET) or sent in the body (POST). |
+| `VEHICLE_REGISTRY_KEY` | `sk_live_…` | Sent as `Authorization: Bearer …` by default. |
+| `VEHICLE_REGISTRY_AUTH_STYLE` | `bearer` (default) · `x-api-key` · `basic` · `query` | `basic` uses `VEHICLE_REGISTRY_CLIENT_ID` and `VEHICLE_REGISTRY_CLIENT_SECRET`; `x-api-key` sends the key in `VEHICLE_REGISTRY_AUTH_HEADER`. |
+| `VEHICLE_REGISTRY_METHOD` | `GET` (default) · `POST` | |
+| `VEHICLE_REGISTRY_PARAM` | `registrationNumber` (default), `id_number`, `rc_number` … | Field name used for the query string or the POST body. |
+| `VEHICLE_REGISTRY_TIMEOUT_MS` | `8000` | Upstream calls are abandoned after this. |
+| `VEHICLE_REGISTRY_CACHE_TTL_SECONDS` | `86400` | Responses are cached in memory; `0` disables reuse. |
+
+Responses are normalised through field aliases, so Surepass-, Cashfree-, Signzy-, Perfios-, Zoop- and Vahan-shaped payloads all work without code changes. New field names can be added to the alias lists in `backend/src/services/vehicleRegistry.ts`.
+
+### Service list approval & customer notifications (optional)
+
+`POST /api/jobcards/:id/approval/share` mints an opaque token, moves the job card to *Pending Approval* and returns the customer link `${PUBLIC_APP_URL}/approval/:token`. That page needs no login: the customer sees the itemised list (name, HSN/SAC, rate, quantity + unit, discount, tax, total) and either approves it or requests changes. The decision, method and timestamp are written to `approval.history` and the job card audit log.
+
+Sharing works with nothing configured — the link is generated and shown to the advisor — but nothing is transmitted until a relay is set up. `delivery[]` in the response tells you exactly what happened per channel, so the UI never claims a message was sent when it was not.
+
+| Variable | Example | Notes |
+|---|---|---|
+| `PUBLIC_APP_URL` | `https://garage.example.com` | Base URL for the approval link. Falls back to `CLIENT_URL`. |
+| `NOTIFY_WEBHOOK_URL` | `https://relay.example.com/send` | Relay that turns the payload into an SMS / WhatsApp message / email. |
+| `NOTIFY_WEBHOOK_TOKEN` | `…` | Sent as `Authorization: Bearer …`. |
+| `NOTIFY_SENDER` | `AutoRox` | Sender name passed to the relay. |
+| `NOTIFY_TIMEOUT_MS` | `8000` | Delivery calls are abandoned after this. |
+
+The relay receives `{ to, channel, subject, body, link, sender, reference }` per requested channel and should answer 2xx once the message is accepted; Twilio, Gupshup, MSG91, the Meta Cloud API and Resend all fit behind a small relay like that.
+
+Related endpoints: `PATCH /api/jobcards/:id/advance` (record or clear a deposit), `PATCH /api/jobcards/:id/approval` (approved / changes requested / skipped at the desk) and the public `GET /api/public/approvals/:token` + `POST /api/public/approvals/:token/respond`.
+
 ### Kitchen-sink script (root package.json)
 ```bash
 npm run install:all
@@ -112,6 +148,7 @@ Base URL: `http://localhost:5000/api`
 | `GET/POST /estimates` · `GET/PUT /estimates/:id` · `PATCH /:id/approve` · `:reject` · `POST /:id/convert-invoice` | Estimates |
 | `GET/POST /customers` · `/:id`, `/:id/vehicles`, `/:id/jobcards` | Customers |
 | `GET/POST /vehicles` · `/byReg/:regNo`, `/:id` | Vehicles |
+| `GET /vehicles/lookup/:regNo` | Vehicle master + registry RC lookup (`workshop` · `registry` · `cache`) |
 | `GET/POST /advisors` · `/:id`, `/:id/status`, `/:id/workload` | Advisors |
 | `GET /analytics/dashboard` · `/status-distribution` · `/service-type-distribution` · `/advisor-performance` | Analytics |
 | `GET /reports/jobcards?format=csv` | Job card report + CSV |

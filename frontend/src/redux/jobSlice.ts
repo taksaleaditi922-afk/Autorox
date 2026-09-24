@@ -10,6 +10,15 @@ export const fetchJobCards = createAsyncThunk('jobCards/fetch', async (params: R
   }
 });
 
+export const fetchJobCardStats = createAsyncThunk('jobCards/stats', async (_, { rejectWithValue }) => {
+  try {
+    const res = await api.get('/jobcards/stats');
+    return res.data.data;
+  } catch (err) {
+    return rejectWithValue(err.response?.data?.error || 'Failed to load job card counts');
+  }
+});
+
 export const fetchJobCard = createAsyncThunk('jobCards/fetchOne', async (id: string, { rejectWithValue }) => {
   try {
     const res = await api.get(`/jobcards/${id}`);
@@ -49,22 +58,37 @@ export const updateJobStatus = createAsyncThunk(
   }
 );
 
-export const deleteJobCard = createAsyncThunk('jobCards/delete', async (id: string, { rejectWithValue }) => {
-  try {
-    await api.delete(`/jobcards/${id}`);
-    return id;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to delete job card');
+export const deleteJobCard = createAsyncThunk(
+  'jobCards/delete',
+  async (input: string | { id: string; force?: boolean }, { rejectWithValue }) => {
+    const id = typeof input === 'string' ? input : input.id;
+    const force = typeof input === 'string' ? false : input.force === true;
+    try {
+      await api.delete(`/jobcards/${id}`, { params: force ? { force: 'true' } : undefined });
+      return id;
+    } catch (err) {
+      return rejectWithValue(err.response?.data?.error || 'Failed to delete job card');
+    }
   }
-});
+);
+
+export interface JobCardStats {
+  total: number;
+  byStatus: Record<string, number>;
+  groups: Record<string, number>;
+}
+
+const EMPTY_STATS: JobCardStats = { total: 0, byStatus: {}, groups: {} };
 
 const jobCardSlice = createSlice({
   name: 'jobCards',
   initialState: {
     items: [],
     current: null,
+    stats: EMPTY_STATS as JobCardStats,
     pagination: { page: 1, limit: 10, total: 0, totalPages: 1 },
     loading: false,
+    statsLoading: false,
     error: null,
   },
   reducers: {},
@@ -82,6 +106,16 @@ const jobCardSlice = createSlice({
         state.loading = false;
         state.error = action.payload;
       })
+      .addCase(fetchJobCardStats.pending, (state) => {
+        state.statsLoading = true;
+      })
+      .addCase(fetchJobCardStats.fulfilled, (state, action) => {
+        state.statsLoading = false;
+        state.stats = action.payload || EMPTY_STATS;
+      })
+      .addCase(fetchJobCardStats.rejected, (state) => {
+        state.statsLoading = false;
+      })
       .addCase(fetchJobCard.pending, (state) => {
         state.loading = true;
       })
@@ -97,6 +131,11 @@ const jobCardSlice = createSlice({
         state.items.unshift(action.payload);
       })
       .addCase(updateJobStatus.fulfilled, (state, action) => {
+        state.current = action.payload;
+        const idx = state.items.findIndex((i) => i._id === action.payload._id);
+        if (idx !== -1) state.items[idx] = action.payload;
+      })
+      .addCase(updateJobCard.fulfilled, (state, action) => {
         state.current = action.payload;
         const idx = state.items.findIndex((i) => i._id === action.payload._id);
         if (idx !== -1) state.items[idx] = action.payload;
