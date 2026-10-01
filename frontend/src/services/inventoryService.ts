@@ -9,6 +9,7 @@ import type {
   InwardRecord,
   IssuedRecord,
   PurchaseReturn,
+  StockMovement,
 } from './types';
 
 // Pages and the redux slice import the shared inventory types, constants and
@@ -59,6 +60,29 @@ export async function updateStockFields(
   return res.data.data as InventoryItem;
 }
 
+export async function createInventoryProduct(payload: Record<string, any>): Promise<InventoryItem> {
+  const res = await api.post('/products', payload);
+  return res.data.data as InventoryItem;
+}
+
+export async function updateInventoryProduct(id: string, payload: Record<string, any>): Promise<InventoryItem> {
+  const res = await api.put(`/products/${id}`, payload);
+  return res.data.data as InventoryItem;
+}
+
+export async function deleteInventoryProduct(id: string): Promise<void> {
+  await api.delete(`/products/${id}`);
+}
+
+export async function changeProductStock(
+  id: string,
+  mode: 'add' | 'reduce',
+  payload: { quantity: number; purchasePrice?: number; reason?: string; note?: string }
+): Promise<{ product: InventoryItem; movement: StockMovement }> {
+  const res = await api.post(`/stock-transactions/${id}/${mode}`, payload);
+  return { product: res.data.data, movement: res.data.movement };
+}
+
 /** POST /api/stock-transactions — record a stock movement. */
 export async function createStockMovement(
   payload: {
@@ -68,8 +92,17 @@ export async function createStockMovement(
     reference?: { type?: string; number?: string };
     notes?: string;
   }
-): Promise<void> {
-  await api.post('/stock-transactions', payload);
+): Promise<{ movement: StockMovement; product: InventoryItem }> {
+  const res = await api.post('/stock-transactions', payload);
+  return { movement: res.data.data, product: res.data.product };
+}
+
+export async function fetchStockMovements(
+  productId: string,
+  params: { type?: string; from?: string; to?: string } = {}
+): Promise<StockMovement[]> {
+  const res = await api.get('/stock-transactions', { params: { productId, ...params, limit: 200 } });
+  return res.data.data as StockMovement[];
 }
 
 // ---------------------------------------------------------------------------
@@ -100,12 +133,44 @@ export async function fetchInventoryInsights(): Promise<InventoryInsight> {
 }
 
 export async function fetchStockAlerts(): Promise<{ data: StockAlert[]; pagination?: Record<string, any> }> {
-  try {
-    const res = await api.get('/inventory/alerts');
-    return res.data;
-  } catch {
-    throw new Error('noAlertsEndpoint');
-  }
+  const res = await api.get('/inventory/alerts');
+  return res.data;
+}
+
+export interface InventoryOptions {
+  categories: string[];
+  locations: string[];
+  vehicleTypes: string[];
+  partTypes: string[];
+  agedStockDays: number;
+}
+
+export async function fetchInventoryOptions(): Promise<InventoryOptions> {
+  const res = await api.get('/inventory/options');
+  return res.data.data as InventoryOptions;
+}
+
+export interface InventoryImportRow {
+  rowNumber: number;
+  data: Record<string, string>;
+  valid: boolean;
+  errors: string[];
+  action: 'create' | 'update';
+}
+
+export async function previewInventoryCsv(csv: string): Promise<{ rows: InventoryImportRow[]; summary: { total: number; valid: number; invalid: number } }> {
+  const res = await api.post('/inventory/import/preview', { csv });
+  return { rows: res.data.data, summary: res.data.summary };
+}
+
+export async function importInventoryCsv(csv: string): Promise<{ created: number; updated: number; skipped: number; failed: number }> {
+  const res = await api.post('/inventory/import', { csv });
+  return res.data.data;
+}
+
+export async function downloadInventoryFile(path: '/inventory/template' | '/inventory/export', params?: Record<string, any>): Promise<Blob> {
+  const res = await api.get(path, { params, responseType: 'blob' });
+  return res.data as Blob;
 }
 
 export async function fetchPurchaseOrders(params?: Record<string, any>): Promise<{ data: PurchaseOrder[]; pagination?: Record<string, any> }> {
@@ -242,6 +307,8 @@ export const MOCK_STATS: InventoryStats = (() => {
   return {
     uniquePartNos: unique,
     totalStockItems: totalQty,
+    purchaseValue: stockValue,
+    saleValue: items.reduce((s, i) => s + (i.inventory?.quantity ?? 0) * (i.pricing?.sellingPrice ?? 0), 0),
     stockValue,
     lowStock: low,
     outOfStock: out,
@@ -293,6 +360,8 @@ export function computeMockStats(items: InventoryItem[]): InventoryStats {
   return {
     uniquePartNos: unique,
     totalStockItems: totalQty,
+    purchaseValue: stockValue,
+    saleValue: items.reduce((s, i) => s + (i.inventory?.quantity ?? 0) * (i.pricing?.sellingPrice ?? 0), 0),
     stockValue,
     lowStock: low,
     outOfStock: out,
@@ -331,6 +400,7 @@ export function computeMockAlerts(items: InventoryItem[]): StockAlert[] {
     if (q === 0) {
       alerts.push({
         id: `alert-${item.id}`,
+        productId: item.id,
         productCode: item.productCode,
         productName: item.productName,
         category: item.category || '',
@@ -344,6 +414,7 @@ export function computeMockAlerts(items: InventoryItem[]): StockAlert[] {
     } else if (q <= m) {
       alerts.push({
         id: `alert-${item.id}`,
+        productId: item.id,
         productCode: item.productCode,
         productName: item.productName,
         category: item.category || '',
@@ -357,6 +428,7 @@ export function computeMockAlerts(items: InventoryItem[]): StockAlert[] {
     } else if (q <= m * 2) {
       alerts.push({
         id: `alert-${item.id}`,
+        productId: item.id,
         productCode: item.productCode,
         productName: item.productName,
         category: item.category || '',

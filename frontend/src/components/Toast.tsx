@@ -1,11 +1,11 @@
 import { useEffect } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
 import { Alert, Snackbar } from '@mui/material';
 import { clearToast } from '../redux/uiSlice';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
 
 export default function Toast() {
-  const toast = useSelector((state) => state.ui.toast);
-  const dispatch = useDispatch();
+  const toast = useAppSelector((state) => state.ui.toast);
+  const dispatch = useAppDispatch();
 
   useEffect(() => {
     if (toast) {

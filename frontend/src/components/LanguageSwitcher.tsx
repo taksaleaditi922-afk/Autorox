@@ -1,16 +1,22 @@
 import { useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
 import { IconButton, Menu, MenuItem, Tooltip, Box } from '@mui/material';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
 import TranslateIcon from '@mui/icons-material/Translate';
 import CheckIcon from '@mui/icons-material/Check';
 import { LANGUAGES } from '../i18n/languages';
 import { setLanguage } from '../redux/languageSlice';
 import useT from '../i18n/useT';
+import type { IconButtonProps } from '@mui/material/IconButton';
 
-export default function LanguageSwitcher({ color = 'inherit', iconColor }) {
-  const dispatch = useDispatch();
+interface LanguageSwitcherProps {
+  color?: IconButtonProps['color'];
+  iconColor?: string;
+}
+
+export default function LanguageSwitcher({ color = 'inherit', iconColor }: LanguageSwitcherProps) {
+  const dispatch = useAppDispatch();
   const t = useT();
-  const current = useSelector((state) => state.language.lang);
+  const current = useAppSelector((state) => state.language.lang);
   const [anchorEl, setAnchorEl] = useState(null);
   const open = Boolean(anchorEl);
 

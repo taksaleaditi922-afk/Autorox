@@ -1,14 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../services/api';
 
-export const fetchJobCards = createAsyncThunk('jobCards/fetch', async (params: Record<string, any> = {}, { rejectWithValue }) => {
-  try {
-    const res = await api.get('/jobcards', { params });
-    return res.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to load job cards');
-  }
-});
+type RejectValue = (value: any) => any;
 
 export const fetchJobCardStats = createAsyncThunk('jobCards/stats', async (_, { rejectWithValue }) => {
   try {
@@ -52,8 +45,20 @@ export const updateJobStatus = createAsyncThunk(
     try {
       const res = await api.patch(`/jobcards/${id}/status`, { status, notes });
       return res.data.data;
-    } catch (err) {
-      return rejectWithValue(err.response?.data?.error || 'Failed to update status');
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to update status');
+    }
+  }
+);
+
+export const fetchJobCards = createAsyncThunk(
+  'jobCards/fetch',
+  async (params: Record<string, any> = {}, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.get('/jobcards', { params });
+      return res.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load job cards');
     }
   }
 );

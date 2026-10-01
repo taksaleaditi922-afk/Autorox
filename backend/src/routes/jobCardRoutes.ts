@@ -13,7 +13,7 @@ import {
   shareApproval,
   updateApproval,
 } from '../controllers/jobCardController.js';
-import { uploadDocument, getDocuments, deleteDocument, printJobCard } from '../controllers/documentController.js';
+import { uploadDocument, getDocuments, getDocumentFile, deleteDocument, printJobCard } from '../controllers/documentController.js';
 import { protect } from '../middleware/auth.js';
 import validate from '../middleware/validate.js';
 import { upload } from '../middleware/upload.js';
@@ -75,6 +75,12 @@ router
 
 router.post('/:id/documents', upload.single('file'), uploadDocument);
 router.get('/:id/documents', param('id').isMongoId(), validate, getDocuments);
+router.get(
+  '/:id/documents/:docId/file',
+  [param('id').isMongoId(), param('docId').isMongoId()],
+  validate,
+  getDocumentFile
+);
 router.delete('/:id/documents/:docId', param('id').isMongoId(), validate, deleteDocument);
 router.post('/:id/print', param('id').isMongoId(), validate, printJobCard);
 

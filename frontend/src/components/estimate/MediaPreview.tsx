@@ -67,11 +67,13 @@ export default function MediaPreview({ items, resolveUrl, onRemove, onRetry, siz
     (async () => {
       for (const item of list) {
         const id = itemId(item);
-        const hasUrl = Boolean((item as MediaAttachment).url);
         const localUrl = (item as MediaAttachment).url;
+        const hasUrl = Boolean(localUrl);
         const isBlobUrl = typeof localUrl === 'string' && localUrl.startsWith('blob:');
         if (hasUrl && isBlobUrl) continue;
-        if (hasUrl && !isBlobUrl) continue;
+        // Authenticated API files cannot be loaded by a plain <img> because
+        // access tokens live in localStorage. Resolve them through Axios.
+        if (hasUrl && !String(localUrl).startsWith('/api/')) continue;
         if (resolved[id] || resolutionError[id]) continue;
         try {
           const url = await resolveUrl(item);
@@ -107,14 +109,20 @@ export default function MediaPreview({ items, resolveUrl, onRemove, onRetry, siz
   if (!list.length) return null;
 
   const active = openIndex !== null ? list[openIndex] : null;
-  const activeUrl = active ? (active as MediaAttachment).url || resolved[itemId(active)] : undefined;
+  const activeStoredUrl = active ? (active as MediaAttachment).url : undefined;
+  const activeNeedsAuth = Boolean(resolveUrl && activeStoredUrl?.startsWith('/api/'));
+  const activeUrl = active
+    ? resolved[itemId(active)] || (activeNeedsAuth ? undefined : activeStoredUrl)
+    : undefined;
 
   return (
     <>
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
         {list.map((item, index) => {
           const id = itemId(item);
-          const url = (item as MediaAttachment).url || resolved[id];
+          const storedUrl = (item as MediaAttachment).url;
+          const needsAuth = Boolean(resolveUrl && storedUrl?.startsWith('/api/'));
+          const url = resolved[id] || (needsAuth ? undefined : storedUrl);
           const uploading = (item as MediaAttachment).uploadState === 'uploading';
           const failed = (item as MediaAttachment).uploadState === 'error';
           const progress = (item as MediaAttachment).progress ?? 0;

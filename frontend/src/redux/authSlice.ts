@@ -1,13 +1,13 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../services/api';
 
-export const login = createAsyncThunk('auth/login', async ({ email, password }, { rejectWithValue }) => {
+export const login = createAsyncThunk<any, { email: string; password: string }, { rejectValue: string }>('auth/login', async ({ email, password }, { rejectWithValue }) => {
   try {
     const res = await api.post('/auth/login', { email, password });
     localStorage.setItem('accessToken', res.data.accessToken);
     localStorage.setItem('user', JSON.stringify(res.data.user));
     return res.data.user;
-  } catch (err) {
+  } catch (err: any) {
     // No response at all means the request never reached the API (backend down,
     // proxy misconfigured) — say so instead of a bare "Login failed".
     if (!err?.response) {
@@ -16,6 +16,8 @@ export const login = createAsyncThunk('auth/login', async ({ email, password }, 
     return rejectWithValue(err.response?.data?.error || 'Login failed');
   }
 });
+
+type RejectValue = (value: any) => any;
 
 export const logout = createAsyncThunk('auth/logout', async () => {
   try {
@@ -28,15 +30,18 @@ export const logout = createAsyncThunk('auth/logout', async () => {
   }
 });
 
-export const fetchMe = createAsyncThunk('auth/me', async (_, { rejectWithValue }) => {
-  try {
-    const res = await api.get('/auth/me');
-    localStorage.setItem('user', JSON.stringify(res.data.user));
-    return res.data.user;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Session expired');
+export const fetchMe = createAsyncThunk(
+  'auth/me',
+  async (_, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.get('/auth/me');
+      localStorage.setItem('user', JSON.stringify(res.data.user));
+      return res.data.user;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Session expired');
+    }
   }
-});
+);
 
 const storedUser = (() => {
   try {
@@ -61,6 +66,8 @@ const authSlice = createSlice({
     setUnauthenticated(state) {
       state.user = null;
       state.isAuthenticated = false;
+      state.loading = false;
+      state.error = null;
     },
   },
   extraReducers: (builder) => {

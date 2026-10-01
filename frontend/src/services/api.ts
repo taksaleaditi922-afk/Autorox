@@ -28,6 +28,9 @@ const tryRefresh = () => {
       .post('/auth/refresh-token')
       .then((res) => {
         localStorage.setItem('accessToken', res.data.accessToken);
+        if (res.data.user) {
+          localStorage.setItem('user', JSON.stringify(res.data.user));
+        }
         return res.data.accessToken;
       })
       .catch((err) => {
@@ -51,10 +54,7 @@ api.interceptors.response.use(
       error.response?.status === 401 &&
       !originalRequest?._retry &&
       !originalRequest?.url?.includes('/auth/login') &&
-      !originalRequest?.url?.includes('/auth/refresh-token') &&
-      !originalRequest?.url?.includes('/sales') &&
-      !originalRequest?.url?.includes('/products') &&
-      !originalRequest?.url?.includes('/stock-transactions')
+      !originalRequest?.url?.includes('/auth/refresh-token')
     ) {
       originalRequest._retry = true;
       try {

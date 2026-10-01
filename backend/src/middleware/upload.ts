@@ -15,7 +15,7 @@ const uploadDir = path.isAbsolute(env.uploadDir)
 
 fs.mkdirSync(uploadDir, { recursive: true });
 
-const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx'];
+const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.webp', '.heic', '.doc', '.docx'];
 const maxSize = env.maxFileSizeMb * 1024 * 1024;
 
 const storage = multer.diskStorage({

@@ -83,6 +83,9 @@ export default function ServicesStep() {
 
   return (
     <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+        Add at least one service, package, part, labour, or custom item to continue. Fields marked * are required.
+      </Typography>
       <Grid container spacing={2.5}>
         {/* ------------------------------ main column ---------------------------- */}
         <Grid item xs={12} md={8}>

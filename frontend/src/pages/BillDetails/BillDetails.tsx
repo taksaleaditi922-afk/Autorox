@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
   Box, Card, CardContent, Typography, TextField, MenuItem, Button, Table, TableHead, TableRow,
   TableBody, TableCell, TableContainer, IconButton, Dialog, DialogTitle, DialogContent,
@@ -19,19 +19,19 @@ import {
 import { fetchSale, updateSale, deleteSale, updateSaleStatus, recordPayment, fetchPaymentHistory } from '../../redux/salesSlice';
 import { showToast } from '../../redux/uiSlice';
 import StatusBadge from '../../components/StatusBadge';
-import InvoicePreview from '../../components/InvoicePreview';
 import Loader from '../../components/Loader';
 import { formatDate, formatDateTime, formatCurrency } from '../../utils/format';
 import { SALE_STATUSES, PAYMENT_METHODS, TAX_RATE } from '../../constants';
+import { invoiceFromSale, openInvoicePrint } from '../../services/invoicePrintService';
 
 const ITEM_ROWS = [{ productId: '', productCode: '', productName: '', quantity: 1, unitPrice: 0, tax: TAX_RATE }];
 
 export default function BillDetails() {
   const { id } = useParams();
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const { current, loading, paymentHistory } = useSelector((state) => state.sales);
-  const { user } = useSelector((state) => state.auth);
+  const { current, loading, paymentHistory } = useAppSelector((state) => state.sales);
+  const { user } = useAppSelector((state) => state.auth);
 
   const [editing, setEditing] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -41,7 +41,6 @@ export default function BillDetails() {
 
   const [form, setForm] = useState(null);
   const [editForm, setEditForm] = useState(null);
-  const [pdfDialog, setPdfDialog] = useState(false);
   const [recordingDialog, setRecordingDialog] = useState(false);
   const [recordingAmount, setRecordingAmount] = useState(0);
   const [recordingMethod, setRecordingMethod] = useState('Cash');
@@ -180,7 +179,7 @@ export default function BillDetails() {
       const res = await dispatch(deleteSale(id));
       if (deleteSale.fulfilled.match(res)) {
         dispatch(showToast({ severity: 'success', message: 'Bill deleted' }));
-        navigate('/sell');
+        navigate('/counter-sale');
       } else {
         dispatch(showToast({ severity: 'error', message: res.error || 'Failed to delete' }));
       }
@@ -230,13 +229,21 @@ export default function BillDetails() {
   const t = totals(current);
   const editable = t.status !== 'Paid' && t.status !== 'Cancelled';
 
+  const handlePrintInvoice = () => {
+    try {
+      openInvoicePrint(invoiceFromSale(current));
+    } catch (error) {
+      dispatch(showToast({ severity: 'error', message: error instanceof Error ? error.message : 'Could not open the invoice' }));
+    }
+  };
+
   if (loading) return <Loader label="Loading bill..." />;
   if (!current) return <Typography color="error">Bill not found.</Typography>;
 
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3, flexWrap: 'wrap' }}>
-        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/sell')} variant="outlined" sx={{ borderRadius: 2.5 }}>Back</Button>
+        <Button startIcon={<ArrowBackIcon />} onClick={() => navigate('/counter-sale')} variant="outlined" sx={{ borderRadius: 2.5 }}>Back</Button>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Typography variant="h5" fontWeight={800}>{current.billNumber}</Typography>
           <StatusBadge status={t.status} />
@@ -250,7 +257,7 @@ export default function BillDetails() {
         ) : (
           <>
             <Button variant="contained" startIcon={<EditIcon />} onClick={startEditing} disabled={!editable} sx={{ borderRadius: 2.5 }}>Edit</Button>
-            <Button variant="outlined" startIcon={<PrintIcon />} onClick={() => setPdfDialog(true)} sx={{ borderRadius: 2.5 }}>Print / PDF</Button>
+            <Button variant="outlined" startIcon={<PrintIcon />} onClick={handlePrintInvoice} sx={{ borderRadius: 2.5 }}>Print Invoice / PDF</Button>
             {t.status === 'Invoice' && (
               <Button variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={() => setDeleteConfirm(true)} sx={{ borderRadius: 2.5 }}>Delete</Button>
             )}
@@ -448,17 +455,6 @@ export default function BillDetails() {
           <Button variant="contained" onClick={handleRecordPayment} disabled={loadingAction}>
             {loadingAction ? 'Recording...' : 'Record Payment'}
           </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={pdfDialog} onClose={() => setPdfDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Invoice Preview</DialogTitle>
-        <DialogContent dividers>
-          <InvoicePreview sale={current} showDiscountDetails={false} />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPdfDialog(false)}>Close</Button>
-          <Button variant="contained" startIcon={<PrintIcon />} onClick={() => window.print()}>Print</Button>
         </DialogActions>
       </Dialog>
 

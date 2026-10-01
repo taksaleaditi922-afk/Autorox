@@ -14,6 +14,10 @@ const settingsSchema = new mongoose.Schema({
   },
   taxRate: { type: Number, default: 18 },
   currency: { type: String, default: 'INR' },
+  inventory: {
+    lowStockThreshold: { type: Number, default: 5, min: 0 },
+    agedStockDays: { type: Number, default: 90, min: 1 },
+  },
   serviceTypes: [
     {
       name: { type: String, required: true, trim: true },

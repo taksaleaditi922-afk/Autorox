@@ -26,6 +26,9 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import type { JobCardInspectionEntry } from '../../../utils/jobCard';
 import { INSPECTION_CONDITIONS } from '../../../utils/jobCard';
 import type { JobCardStepProps } from '../stepProps';
+import type { MediaAttachment } from '../../../services/estimate/types';
+import MediaUploader from '../../../components/estimate/MediaUploader';
+import * as inspectionMediaService from '../../../services/jobCard/inspectionMediaService';
 
 const CONDITION_COLORS: Record<string, string> = {
   Good: 'success.main',
@@ -34,8 +37,9 @@ const CONDITION_COLORS: Record<string, string> = {
   'Not Applicable': 'text.disabled',
 };
 
-export default function InspectionReportStep({ form, set }: JobCardStepProps) {
+export default function InspectionReportStep({ form, set, actions }: JobCardStepProps) {
   const [newItem, setNewItem] = useState('');
+  const [newItemError, setNewItemError] = useState('');
   const rows = form.inspectionReport;
 
   const summary = useMemo(() => {
@@ -54,15 +58,44 @@ export default function InspectionReportStep({ form, set }: JobCardStepProps) {
 
   const addRow = () => {
     const name = newItem.trim();
-    if (!name) return;
+    if (!name) {
+      setNewItemError('Enter an inspection point name');
+      return;
+    }
     if (rows.some((row) => row.item.toLowerCase() === name.toLowerCase())) {
-      setNewItem('');
+      setNewItemError('This inspection point already exists');
       return;
     }
     set({
-      inspectionReport: [...rows, { item: name, condition: 'Good', notes: '', photoUrl: '' }],
+      inspectionReport: [...rows, { item: name, condition: 'Good', notes: '', photoUrl: '', media: [] }],
     });
     setNewItem('');
+    setNewItemError('');
+  };
+
+  const uploadPhoto = async (file: File, onProgress: (percent: number) => void) => {
+    if (!actions?.ensurePersisted) throw new Error('Save the job card before attaching a photo.');
+    const jobCardId = await actions.ensurePersisted();
+    if (!jobCardId) throw new Error('The job card could not be saved for photo upload.');
+    return inspectionMediaService.uploadInspectionPhoto(jobCardId, file, onProgress);
+  };
+
+  const mediaFor = (row: JobCardInspectionEntry, index: number): MediaAttachment[] => {
+    if (row.media?.length) return row.media;
+    if (!row.photoUrl) return [];
+    const serverId = row.photoUrl.match(/\/documents\/([^/]+)\/file(?:\?|$)/)?.[1];
+    return [{
+      id: serverId || `legacy-inspection-${index}`,
+      serverId,
+      name: `${row.item || 'Inspection'} photo`,
+      kind: 'photo',
+      mimeType: 'image/*',
+      size: 0,
+      url: row.photoUrl,
+      uploadState: 'done',
+      progress: 100,
+      uploadedAt: '',
+    }];
   };
 
   const markAllGood = () => {
@@ -153,22 +186,13 @@ export default function InspectionReportStep({ form, set }: JobCardStepProps) {
                         ))}
                       </TextField>
                     </Grid>
-                    <Grid item xs={6} sm={4}>
+                    <Grid item xs={10} sm={6}>
                       <TextField
                         fullWidth
                         size="small"
                         label="Technician Notes"
                         value={row.notes}
                         onChange={(e) => updateRow(index, { notes: e.target.value })}
-                      />
-                    </Grid>
-                    <Grid item xs={10} sm={2}>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        label="Photo URL"
-                        value={row.photoUrl || ''}
-                        onChange={(e) => updateRow(index, { photoUrl: e.target.value })}
                       />
                     </Grid>
                     <Grid item xs={2} sm={1} sx={{ textAlign: 'center' }}>
@@ -178,22 +202,53 @@ export default function InspectionReportStep({ form, set }: JobCardStepProps) {
                         </IconButton>
                       </Tooltip>
                     </Grid>
+                    <Grid item xs={12}>
+                      <MediaUploader
+                        media={mediaFor(row, index)}
+                        estimateId={null}
+                        allowVideo={false}
+                        choosePhotoSource
+                        multiple={false}
+                        maxFiles={1}
+                        disabled={actions?.saving}
+                        uploadFile={uploadPhoto}
+                        removeFile={inspectionMediaService.removeInspectionPhoto}
+                        resolveFileUrl={inspectionMediaService.fetchInspectionPhoto}
+                        onChange={(media) => {
+                          const storedPhoto = media.find(
+                            (item) => item.uploadState === 'done' && item.url && !item.url.startsWith('blob:')
+                          );
+                          updateRow(index, { media, photoUrl: storedPhoto?.url || '' });
+                        }}
+                      />
+                    </Grid>
                   </Grid>
                 </Box>
               </Grid>
             ))}
           </Grid>
 
-          <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+          <Box
+            component="form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              addRow();
+            }}
+            sx={{ display: 'flex', alignItems: 'flex-start', gap: 1, mt: 2 }}
+          >
             <TextField
               size="small"
               fullWidth
               label="Add another inspection point"
               value={newItem}
-              onChange={(e) => setNewItem(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && addRow()}
+              onChange={(e) => {
+                setNewItem(e.target.value);
+                if (newItemError) setNewItemError('');
+              }}
+              error={Boolean(newItemError)}
+              helperText={newItemError}
             />
-            <Button variant="outlined" startIcon={<AddIcon />} onClick={addRow}>
+            <Button type="submit" variant="outlined" startIcon={<AddIcon />} sx={{ minHeight: 40 }}>
               Add
             </Button>
           </Box>

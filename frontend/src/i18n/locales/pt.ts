@@ -14,7 +14,7 @@ const pt = {
   'nav.jobCards': 'Ordens de Serviço',
   'nav.newJobCard': 'Nova Ordem de Serviço',
   'nav.estimates': 'Orçamentos',
-  'nav.sellProducts': 'Vender Produtos',
+  'nav.sellProducts': 'Counter Sale',
   'nav.customers': 'Clientes',
   'nav.vehicles': 'Veículos',
   'nav.advisors': 'Consultores',

@@ -14,6 +14,7 @@ import {
   type JobCardLineItem,
   type JobCardTotals,
 } from './jobCardPricing';
+import type { MediaAttachment } from '../services/estimate/types';
 
 export {
   APPROVAL_STATUSES,
@@ -119,6 +120,8 @@ export interface JobCardInspectionEntry {
   condition: string;
   notes: string;
   photoUrl?: string;
+  /** UI upload state; the persisted API reference remains photoUrl. */
+  media?: MediaAttachment[];
 }
 
 export interface JobCardReminder {
@@ -224,6 +227,12 @@ export interface JobCardFormState {
   orderSummary: {
     discount: string;
     paymentTerms: string;
+    couponDiscount: string;
+    loyaltyRedeemed: boolean;
+    loyaltyDiscount: string;
+    paymentMethod: string;
+    paymentType: string;
+    remarks: string;
   };
   reminders: JobCardReminder[];
   notes: string;
@@ -231,7 +240,25 @@ export interface JobCardFormState {
 }
 
 export function emptyInspectionReport(): JobCardInspectionEntry[] {
-  return INSPECTION_CHECKLIST.map((item) => ({ item, condition: 'Good', notes: '', photoUrl: '' }));
+  return INSPECTION_CHECKLIST.map((item) => ({ item, condition: 'Good', notes: '', photoUrl: '', media: [] }));
+}
+
+function inspectionMedia(photoUrl: string, item: string, index: number): MediaAttachment[] {
+  if (!photoUrl) return [];
+  const serverId = photoUrl.match(/\/documents\/([^/]+)\/file(?:\?|$)/)?.[1];
+  return [{
+    id: serverId || `legacy-inspection-${index}`,
+    serverId,
+    name: `${item || 'Inspection'} photo`,
+    kind: 'photo',
+    mimeType: 'image/*',
+    size: 0,
+    url: photoUrl,
+    uploadState: 'done',
+    progress: 100,
+    uploadedAt: '',
+    localOnly: false,
+  }];
 }
 
 export function createEmptyJobCardForm(): JobCardFormState {
@@ -289,7 +316,10 @@ export function createEmptyJobCardForm(): JobCardFormState {
     advance: { amount: '', paymentMode: 'Cash', reference: '' },
     advances: [],
     supervisor: null,
-    orderSummary: { discount: '', paymentTerms: '' },
+    orderSummary: {
+      discount: '', paymentTerms: '', couponDiscount: '', loyaltyRedeemed: false,
+      loyaltyDiscount: '', paymentMethod: 'None', paymentType: '', remarks: '',
+    },
     reminders: [],
     notes: '',
     updateToCustomer: true,
@@ -387,11 +417,12 @@ export function mapJobCardToForm(jc: any): JobCardFormState {
       : base.estimatedDelivery),
     inspectionReport:
       Array.isArray(jc.inspectionReport) && jc.inspectionReport.length
-        ? jc.inspectionReport.map((entry: any) => ({
+        ? jc.inspectionReport.map((entry: any, index: number) => ({
             item: entry.item,
             condition: entry.condition || 'Good',
             notes: entry.notes || '',
             photoUrl: entry.photoUrl || '',
+            media: inspectionMedia(entry.photoUrl || '', entry.item, index),
           }))
         : base.inspectionReport,
     lineItems:
@@ -468,6 +499,12 @@ export function mapJobCardToForm(jc: any): JobCardFormState {
     orderSummary: {
       discount: summary.discount ? String(summary.discount) : '',
       paymentTerms: summary.paymentTerms || '',
+      couponDiscount: summary.couponDiscount ? String(summary.couponDiscount) : '',
+      loyaltyRedeemed: Boolean(summary.loyaltyRedeemed),
+      loyaltyDiscount: summary.loyaltyDiscount ? String(summary.loyaltyDiscount) : '',
+      paymentMethod: summary.paymentMethod || 'None',
+      paymentType: summary.paymentType || '',
+      remarks: summary.remarks || '',
     },
     reminders: Array.isArray(jc.reminders)
       ? jc.reminders.map((r: any) => ({
@@ -575,7 +612,9 @@ export function buildJobCardPayload(form: JobCardFormState): Record<string, unkn
         item: entry.item.trim(),
         condition: entry.condition,
         notes: entry.notes.trim(),
-        photoUrl: entry.photoUrl || '',
+        photoUrl:
+          entry.media?.find((media) => media.uploadState === 'done' && media.url && !media.url.startsWith('blob:'))?.url ||
+          (entry.photoUrl?.startsWith('blob:') ? '' : entry.photoUrl || ''),
       })),
     services: form.lineItems
       .filter((line) => line.name.trim())
@@ -638,6 +677,12 @@ export function buildJobCardPayload(form: JobCardFormState): Record<string, unkn
       total: totals.total,
       balanceDue: totals.balanceDue,
       paymentTerms: form.orderSummary.paymentTerms.trim(),
+      couponDiscount: Number(form.orderSummary.couponDiscount) || 0,
+      loyaltyRedeemed: form.orderSummary.loyaltyRedeemed,
+      loyaltyDiscount: Number(form.orderSummary.loyaltyDiscount) || 0,
+      paymentMethod: form.orderSummary.paymentMethod,
+      paymentType: form.orderSummary.paymentType,
+      remarks: form.orderSummary.remarks.trim(),
     },
     reminders: form.reminders
       .filter((r) => r.dueDate || r.notes)

@@ -9,6 +9,7 @@
     "dev": "tsx watch src/server.ts",
     "build": "tsc -p tsconfig.json",
     "seed": "tsx src/seed/seed.ts",
+    "migrate:inventory": "tsx src/migrations/20261001-inventory-upgrade.ts",
     "test": "vitest run"
   },
   "keywords": [

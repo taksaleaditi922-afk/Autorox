@@ -1,6 +1,6 @@
 import Sale, { SALE_STATUSES } from '../models/Sale.js';
 import Product from '../models/Product.js';
-import StockTransaction from '../models/StockTransaction.js';
+import { addStock, reduceStock } from '../services/stockService.js';
 import { generateBillNumber } from '../utils/generators.js';
 import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
@@ -197,21 +197,16 @@ export const createSale = asyncHandler(async (req, res) => {
 
   // Deduct stock and create transactions
   for (const item of items) {
-    const product = await Product.findById(item.productId);
-    const stockBefore = product.inventory.quantity;
-    product.inventory.quantity = stockBefore - item.quantity;
-    await product.save();
-
     sale.items[items.indexOf(item)]._doc.unitPrice = item.unitPrice;
-    await StockTransaction.create({
+    await reduceStock({
       productId: item.productId,
       transactionType: 'Sale',
-      quantity: -item.quantity,
+      quantity: item.quantity,
       reference: { type: 'Bill', id: sale._id, number: billNumber },
-      stockBefore,
-      stockAfter: product.inventory.quantity,
-      notes: `Sold to ${customer.name}`,
-      recordedBy: user._id || null,
+      reason: 'sale',
+      note: `Sold to ${customer.name}`,
+      unitPrice: item.unitPrice,
+      employeeId: user._id || null,
     });
   }
 
@@ -272,38 +267,28 @@ export const updateSale = asyncHandler(async (req, res) => {
       const newItem = newMap.get(productId);
       if (!newItem) {
         // item removed - restore stock
-        const product = await Product.findById(productId);
-        if (product) {
-          const stockBefore = product.inventory.quantity;
-          product.inventory.quantity += oldItem.quantity;
-          await product.save();
-          await StockTransaction.create({
-            productId,
-            transactionType: 'Adjustment',
-            quantity: oldItem.quantity,
-            reference: { type: 'Bill', id: sale._id, number: sale.billNumber },
-            stockBefore,
-            stockAfter: product.inventory.quantity,
-            notes: `Restored stock after bill edit`,
-            recordedBy: user._id || null,
-          });
-        }
+        await addStock({
+          productId,
+          transactionType: 'Adjustment',
+          quantity: oldItem.quantity,
+          reference: { type: 'Bill', id: sale._id, number: sale.billNumber },
+          reason: 'correction',
+          note: 'Restored stock after bill edit',
+          employeeId: user._id || null,
+        });
       } else if (newItem.quantity !== oldItem.quantity) {
-        const product = await Product.findById(productId);
         const diff = oldItem.quantity - newItem.quantity;
-        const stockBefore = product.inventory.quantity;
-        product.inventory.quantity += diff;
-        await product.save();
-        await StockTransaction.create({
+        const change = {
           productId,
           transactionType: diff > 0 ? 'Adjustment' : 'Sale',
-          quantity: diff,
+          quantity: Math.abs(diff),
           reference: { type: 'Bill', id: sale._id, number: sale.billNumber },
-          stockBefore,
-          stockAfter: product.inventory.quantity,
-          notes: `Adjusted stock after bill edit`,
-          recordedBy: user._id || null,
-        });
+          reason: diff > 0 ? 'return' : 'sale',
+          note: 'Adjusted stock after bill edit',
+          employeeId: user._id || null,
+        };
+        if (diff > 0) await addStock(change);
+        else await reduceStock(change);
       }
     }
 
@@ -311,26 +296,15 @@ export const updateSale = asyncHandler(async (req, res) => {
       const oldItem = oldMap.get(productId);
       if (!oldItem) {
         // new item added
-        const product = await Product.findById(productId);
-        if (!product) throw new ApiError(404, `Product not found: ${newItem.productCode}`);
-        if (product.inventory.quantity < newItem.quantity) {
-          throw new ApiError(
-            400,
-            `Insufficient stock for ${product.productName}. Available: ${product.inventory.quantity}`
-          );
-        }
-        const stockBefore = product.inventory.quantity;
-        product.inventory.quantity -= newItem.quantity;
-        await product.save();
-        await StockTransaction.create({
+        await reduceStock({
           productId,
           transactionType: 'Sale',
-          quantity: -newItem.quantity,
+          quantity: newItem.quantity,
           reference: { type: 'Bill', id: sale._id, number: sale.billNumber },
-          stockBefore,
-          stockAfter: product.inventory.quantity,
-          notes: `Added to bill during edit`,
-          recordedBy: user._id || null,
+          reason: 'sale',
+          note: 'Added to bill during edit',
+          unitPrice: newItem.unitPrice,
+          employeeId: user._id || null,
         });
       }
     }
@@ -379,22 +353,15 @@ export const deleteSale = asyncHandler(async (req, res) => {
   // Restore stock
   const user = req.user || {};
   for (const item of sale.items || []) {
-    const product = await Product.findById(item.productId);
-    if (product) {
-      const stockBefore = product.inventory.quantity;
-      product.inventory.quantity += item.quantity;
-      await product.save();
-      await StockTransaction.create({
-        productId: item.productId,
-        transactionType: 'Adjustment',
-        quantity: item.quantity,
-        reference: { type: 'Bill', id: sale._id, number: sale.billNumber },
-        stockBefore,
-        stockAfter: product.inventory.quantity,
-        notes: `Restored stock after bill deletion`,
-        recordedBy: user._id || null,
-      });
-    }
+    await addStock({
+      productId: item.productId,
+      transactionType: 'Adjustment',
+      quantity: item.quantity,
+      reference: { type: 'Bill', id: sale._id, number: sale.billNumber },
+      reason: 'return',
+      note: 'Restored stock after bill deletion',
+      employeeId: user._id || null,
+    });
   }
 
   await sale.deleteOne();
@@ -415,22 +382,15 @@ export const updateSaleStatus = asyncHandler(async (req, res) => {
     // Restore stock on cancellation
     const user = req.user || {};
     for (const item of sale.items || []) {
-      const product = await Product.findById(item.productId);
-      if (product) {
-        const stockBefore = product.inventory.quantity;
-        product.inventory.quantity += item.quantity;
-        await product.save();
-        await StockTransaction.create({
-          productId: item.productId,
-          transactionType: 'Adjustment',
-          quantity: item.quantity,
-          reference: { type: 'Bill', id: sale._id, number: sale.billNumber },
-          stockBefore,
-          stockAfter: product.inventory.quantity,
-          notes: 'Stock restored after cancellation',
-          recordedBy: user._id || null,
-        });
-      }
+      await addStock({
+        productId: item.productId,
+        transactionType: 'Adjustment',
+        quantity: item.quantity,
+        reference: { type: 'Bill', id: sale._id, number: sale.billNumber },
+        reason: 'return',
+        note: 'Stock restored after cancellation',
+        employeeId: user._id || null,
+      });
     }
     sale.payment.status = 'Cancelled';
   } else {

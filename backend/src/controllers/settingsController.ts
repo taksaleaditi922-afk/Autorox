@@ -15,6 +15,9 @@ export const updateSettings = asyncHandler(async (req, res) => {
   if (b.company) settings.company = { ...settings.company, ...b.company };
   if (typeof b.taxRate === 'number') settings.taxRate = b.taxRate;
   if (b.currency) settings.currency = b.currency;
+  if (b.inventory) {
+    settings.inventory = { ...settings.inventory?.toObject?.(), ...b.inventory };
+  }
   await settings.save();
   res.json({ success: true, data: settings });
 });

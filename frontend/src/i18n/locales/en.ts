@@ -16,7 +16,7 @@ const en = {
   'nav.jobCards': 'Job Cards',
   'nav.newJobCard': 'New Job Card',
   'nav.estimates': 'Estimates',
-  'nav.sellProducts': 'Sell Products',
+  'nav.sellProducts': 'Counter Sale',
   'nav.customers': 'Customers',
   'nav.vehicles': 'Vehicles',
   'nav.advisors': 'Advisors',

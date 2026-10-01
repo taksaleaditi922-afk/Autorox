@@ -15,6 +15,8 @@ export type JobCardObjectSection =
  * storybook) without wiring the whole page.
  */
 export interface JobCardStepActions {
+  mode: 'job-card' | 'counter-sale';
+  requiresApproval: boolean;
   /** Validate the current step and advance. */
   reference?: string;
   createdAt?: string;
@@ -24,6 +26,8 @@ export interface JobCardStepActions {
   goBack: () => void;
   /** Persist the form — local draft, plus the server when the card exists. */
   save: () => void;
+  /** Ensure a server draft exists before storing attached media. */
+  ensurePersisted: () => Promise<string | null>;
   /** Store the advance through the API. Resolves false when it could not be saved. */
   recordAdvance: (payload: AdvancePayload) => Promise<boolean>;
   /** Send the itemised list to the customer. */

@@ -14,7 +14,7 @@ const fr = {
   'nav.jobCards': 'Fiches de travail',
   'nav.newJobCard': 'Nouvelle fiche de travail',
   'nav.estimates': 'Devis',
-  'nav.sellProducts': 'Vendre des produits',
+  'nav.sellProducts': 'Counter Sale',
   'nav.customers': 'Clients',
   'nav.vehicles': 'Véhicules',
   'nav.advisors': 'Conseillers',

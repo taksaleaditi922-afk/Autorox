@@ -1,59 +1,79 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../services/api';
 
-export const fetchProducts = createAsyncThunk('products/fetch', async (params = {}, { rejectWithValue }) => {
-  try {
-    const res = await api.get('/products', { params });
-    return res.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to load products');
-  }
-});
+type RejectValue = (value: any) => any;
 
-export const fetchProduct = createAsyncThunk('products/fetchOne', async (id, { rejectWithValue }) => {
-  try {
-    const res = await api.get(`/products/${id}`);
-    return res.data.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to load product');
+export const fetchProducts = createAsyncThunk(
+  'products/fetch',
+  async (params: Record<string, any> = {}, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.get('/products', { params });
+      return res.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load products');
+    }
   }
-});
+);
 
-export const createProduct = createAsyncThunk('products/create', async (payload, { rejectWithValue }) => {
-  try {
-    const res = await api.post('/products', payload);
-    return res.data.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to create product');
+export const fetchProduct = createAsyncThunk(
+  'products/fetchOne',
+  async (id: string, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.get(`/products/${id}`);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load product');
+    }
   }
-});
+);
 
-export const updateProduct = createAsyncThunk('products/update', async ({ id, payload }, { rejectWithValue }) => {
-  try {
-    const res = await api.put(`/products/${id}`, payload);
-    return res.data.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to update product');
+export const createProduct = createAsyncThunk(
+  'products/create',
+  async (payload: Record<string, any>, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.post('/products', payload);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to create product');
+    }
   }
-});
+);
 
-export const deleteProduct = createAsyncThunk('products/delete', async (id, { rejectWithValue }) => {
-  try {
-    await api.delete(`/products/${id}`);
-    return id;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to delete product');
+export const updateProduct = createAsyncThunk(
+  'products/update',
+  async ({ id, payload }: { id: string; payload: Record<string, any> }, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.put(`/products/${id}`, payload);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to update product');
+    }
   }
-});
+);
 
-export const fetchCheckStock = createAsyncThunk('products/checkStock', async (id, { rejectWithValue }) => {
-  try {
-    const res = await api.get(`/products/check-stock/${id}`);
-    return res.data.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to check stock');
+export const deleteProduct = createAsyncThunk(
+  'products/delete',
+  async (id: string, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      await api.delete(`/products/${id}`);
+      return id;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to delete product');
+    }
   }
-});
+);
+
+export const fetchCheckStock = createAsyncThunk(
+  'products/checkStock',
+  async (id: string, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.get(`/products/check-stock/${id}`);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to check stock');
+    }
+  }
+);
 
 const productsSlice = createSlice({
   name: 'products',

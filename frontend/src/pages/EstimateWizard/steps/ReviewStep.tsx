@@ -19,7 +19,6 @@ import {
   Divider,
   Grid,
   IconButton,
-  MenuItem,
   Stack,
   Table,
   TableBody,
@@ -27,7 +26,6 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  TextField,
   Tooltip,
   Typography,
   useMediaQuery,
@@ -46,12 +44,11 @@ import ImageOutlinedIcon from '@mui/icons-material/ImageOutlined';
 import { showToast } from '../../../redux/uiSlice';
 import {
   addLocalAdvance,
-  addPayment,
   removePayment,
   selectEstimate,
   selectEstimateConfig,
 } from '../../../redux/estimateSlice';
-import { INSPECTION_STATUS_META, PAYMENT_MODES } from '../../../services/estimate/config';
+import { INSPECTION_STATUS_META } from '../../../services/estimate/config';
 import * as inspectionService from '../../../services/estimate/inspectionService';
 import * as paymentService from '../../../services/estimate/paymentService';
 import * as pdfService from '../../../services/estimate/pdfService';
@@ -59,9 +56,10 @@ import * as notificationService from '../../../services/estimate/notificationSer
 import { formatCurrency, formatDate } from '../../../utils/format';
 import { maxAllowedAdvance } from '../../../utils/estimateMath';
 import { lineItemTypeLabel, maskIdentityNumber, maskPhone, type StepValidationResult } from '../../../utils/estimateValidation';
-import type { AdvancePayment, PaymentMode } from '../../../services/estimate/types';
+import type { AdvancePayment } from '../../../services/estimate/types';
 import EstimateTotals from '../../../components/estimate/EstimateTotals';
 import { ConfirmDialog, SectionCard, StatusChip, SummaryGrid, SummaryRow } from '../../../components/estimate/primitives';
+import AdvancePaymentModal, { type AdvancePaymentValues } from '../../../components/jobCard/AdvancePaymentModal';
 
 export interface ReviewStepProps {
   validation: StepValidationResult;
@@ -69,8 +67,6 @@ export interface ReviewStepProps {
   generating: boolean;
   generated: boolean;
 }
-
-const today = () => new Date().toISOString().slice(0, 10);
 
 export default function ReviewStep({ validation, onGenerate, generating, generated }: ReviewStepProps) {
   const dispatch = useDispatch();
@@ -82,9 +78,7 @@ export default function ReviewStep({ validation, onGenerate, generating, generat
   const [issueOpen, setIssueOpen] = useState<ReturnType<typeof inspectionService.summarise>['issues'][number] | null>(null);
   const [advanceOpen, setAdvanceOpen] = useState(false);
   const [pendingRemove, setPendingRemove] = useState<AdvancePayment | null>(null);
-  const [advanceError, setAdvanceError] = useState<string | null>(null);
   const [sharing, setSharing] = useState<string | null>(null);
-  const [advance, setAdvance] = useState({ amount: '', mode: 'Cash' as PaymentMode, date: today(), reference: '', notes: '' });
 
   const summary = useMemo(() => inspectionService.summarise(estimate.inspection || []), [estimate.inspection]);
   const currency = config.currency || 'INR';
@@ -93,26 +87,26 @@ export default function ReviewStep({ validation, onGenerate, generating, generat
   const canGenerate = validation.valid && estimate.lineItems.length > 0;
 
   // --------------------------------------------------------------- payments
-  const submitAdvance = async () => {
+  const submitAdvance = async (values: AdvancePaymentValues) => {
     const draft = {
-      amount: Number(advance.amount),
-      mode: advance.mode,
-      date: advance.date,
-      reference: advance.reference,
-      notes: advance.notes,
+      amount: Number(values.amount),
+      mode: values.paymentMethod as any,
+      date: values.date,
+      reference: '',
+      notes: values.remarks,
     };
     const check = paymentService.validateAdvance(draft, estimate.totals, config, estimate.payments);
     if (!check.ok) {
-      setAdvanceError(check.error || 'Invalid advance payment');
+      dispatch(showToast({ severity: 'error', message: check.error || 'Invalid advance payment' }));
       return;
     }
 
+    dispatch(addLocalAdvance(draft));
+    setAdvanceOpen(false);
     if (estimate.draftId) {
       try {
-        const saved = await paymentService.addAdvance(estimate.draftId, draft);
-        dispatch(addPayment(saved));
+        await paymentService.addAdvance(estimate.draftId, draft);
       } catch (err: any) {
-        dispatch(addLocalAdvance(draft));
         dispatch(
           showToast({
             severity: 'warning',
@@ -120,13 +114,8 @@ export default function ReviewStep({ validation, onGenerate, generating, generat
           })
         );
       }
-    } else {
-      dispatch(addLocalAdvance(draft));
     }
 
-    setAdvanceOpen(false);
-    setAdvance({ amount: '', mode: 'Cash', date: today(), reference: '', notes: '' });
-    setAdvanceError(null);
     dispatch(showToast({ severity: 'success', message: 'Advance payment recorded' }));
   };
 
@@ -655,61 +644,14 @@ export default function ReviewStep({ validation, onGenerate, generating, generat
         </DialogActions>
       </Dialog>
 
-      {/* ----------------------------- add advance ------------------------------ */}
-      <Dialog open={advanceOpen} onClose={() => setAdvanceOpen(false)} fullWidth maxWidth="xs" fullScreen={isMobile}>
-        <DialogTitle>Add Advance</DialogTitle>
-        <DialogContent dividers>
-          <Grid container spacing={2} sx={{ pt: 0.5 }}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                required
-                autoFocus
-                type="number"
-                label="Amount"
-                value={advance.amount}
-                onChange={(e) => setAdvance((a) => ({ ...a, amount: e.target.value }))}
-                error={Boolean(advanceError)}
-                helperText={advanceError || (Number.isFinite(cap) ? `Maximum ${formatCurrency(cap, currency)}` : undefined)}
-                inputProps={{ min: 0, step: '0.01' }}
-                InputProps={{ startAdornment: <Typography sx={{ mr: 0.5, color: 'text.muted' }}>₹</Typography> }}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField fullWidth select label="Payment Mode" value={advance.mode} onChange={(e) => setAdvance((a) => ({ ...a, mode: e.target.value as PaymentMode }))}>
-                {PAYMENT_MODES.map((mode) => (
-                  <MenuItem key={mode} value={mode}>
-                    {mode}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Grid>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                type="date"
-                label="Payment Date"
-                InputLabelProps={{ shrink: true }}
-                value={advance.date}
-                onChange={(e) => setAdvance((a) => ({ ...a, date: e.target.value }))}
-                inputProps={{ max: today() }}
-              />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField fullWidth label="Reference Number" value={advance.reference} onChange={(e) => setAdvance((a) => ({ ...a, reference: e.target.value }))} />
-            </Grid>
-            <Grid item xs={12}>
-              <TextField fullWidth multiline minRows={2} label="Notes" value={advance.notes} onChange={(e) => setAdvance((a) => ({ ...a, notes: e.target.value }))} />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, py: 2 }}>
-          <Button onClick={() => setAdvanceOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={submitAdvance}>
-            Add Advance
-          </Button>
-        </DialogActions>
-      </Dialog>
+      <AdvancePaymentModal
+        isOpen={advanceOpen}
+        context="estimate"
+        existingAdvances={estimate.payments.map((payment) => ({ id: payment.id, amount: payment.amount, date: payment.date, paymentMethod: payment.mode, remarks: payment.notes }))}
+        maxAmount={Number.isFinite(cap) ? cap : undefined}
+        onClose={() => setAdvanceOpen(false)}
+        onSave={submitAdvance}
+      />
 
       <ConfirmDialog
         open={Boolean(pendingRemove)}

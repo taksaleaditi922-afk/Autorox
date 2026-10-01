@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { useDebounce } from '../../utils/useDebounce';
+import type { RootState } from '../../store/store';
 import {
   Box, Card, CardContent, Typography, TextField, MenuItem, Button, IconButton,
   Tabs, Tab, Table, TableHead, TableRow, TableBody, TableCell, TableContainer,
   TablePagination, Chip, Tooltip, Menu, MenuItem as MuiMenuItem, Divider,
-  InputAdornment, Grid, Dialog, DialogTitle, DialogContent, DialogActions,
+  InputAdornment, Grid, Dialog, DialogTitle, DialogContent, DialogActions, Badge, Alert as MuiAlert,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -22,6 +23,10 @@ import {
   Close as CloseIcon,
   ErrorOutline as AlertIcon,
   TrendingUp as TrendingUpIcon,
+  NotificationsActive as NotificationsActiveIcon,
+  Add as AddIcon,
+  DeleteOutline as DeleteIcon,
+  UploadFile as UploadFileIcon,
 } from '@mui/icons-material';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/format';
 import Loader from '../../components/Loader';
@@ -29,6 +34,7 @@ import KpiCard from '../../components/Dashboard/KpiCard';
 import useT from '../../i18n/useT';
 import {
   fetchInventoryList,
+  fetchInventoryOptionsThunk,
   fetchInventoryStatsThunk,
   fetchInventoryInsightsThunk,
   fetchStockAlertsThunk,
@@ -39,6 +45,10 @@ import {
   fetchInventoryItemThunk,
   updateStockThunk,
   recordStockMovementThunk,
+  fetchStockHistoryThunk,
+  saveInventoryProductThunk,
+  deleteInventoryProductThunk,
+  changeProductStockThunk,
   resetCurrentItem,
 } from '../../redux/inventorySlice';
 import {
@@ -48,9 +58,12 @@ import {
   COLUMNS,
   computeStockStatus, computeAgeingDays, getAgeingBucket,
   getDefaultFilters,
-  formatBarcode, exportToCsv,
+  formatBarcode, buildInventoryParams, downloadInventoryFile,
 } from '../../services/inventoryService';
-import type { InventoryFilters, InventoryItem, StockAlert } from '../../services/inventoryService';
+import type { InventoryFilters, InventoryItem, StockAlert, StockMovement } from '../../services/inventoryService';
+import PartFormDialog from './PartFormDialog';
+import CsvImportDialog from './CsvImportDialog';
+import { showToast } from '../../redux/uiSlice';
 // ---------------------------------------------------------------------------
 // Debounce hook (kept local to avoid importing a utility that may not exist)
 // ---------------------------------------------------------------------------
@@ -96,41 +109,39 @@ interface InventoryProps {
 }
 
 export default function Inventory(props: InventoryProps) {
-  const dispatch = useDispatch();
-  const navigate = useNavigate();
+  const dispatch = useAppDispatch();
   const t = useT();
-  const state = useSelector((s) => s.inventory);
+  const state = useAppSelector((s) => s.inventory);
+  const user = useAppSelector((s) => s.auth.user);
 
   const [tab, setTab] = useState<InventoryTabId>('stock');
   const [filters, setFilters] = useState<InventoryFilters>(getDefaultFilters);
-  const [debouncedQuery, setDebouncedQuery] = useState(filters.q);
-  const [debouncedPage, setDebouncedPage] = useState(filters.page);
 
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [rowsPerPage, setRowsPerPage] = useState(filters.limit);
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
-  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [partFormOpen, setPartFormOpen] = useState(false);
+  const [partFormSaving, setPartFormSaving] = useState(false);
+  const [partFormError, setPartFormError] = useState('');
   const [movementModalOpen, setMovementModalOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [ageDialogOpen, setAgeDialogOpen] = useState(false);
+  const [csvImportOpen, setCsvImportOpen] = useState(false);
   const [exportMenuAnchor, setExportMenuAnchor] = useState<null | HTMLElement>(null);
   const [alertTypeFilter, setAlertTypeFilter] = useState<string | null>(null);
+  const [alertMenuAnchor, setAlertMenuAnchor] = useState<null | HTMLElement>(null);
 
-  const [editForm, setEditForm] = useState({ quantity: '', minimumLevel: '', location: '', unit: '' });
   const [movementForm, setMovementForm] = useState({
-    transactionType: 'Inward',
+    mode: 'add' as 'add' | 'reduce',
     quantity: '',
-    referenceType: '',
-    referenceNumber: '',
-    notes: '',
+    purchasePrice: '',
+    reason: 'sale',
+    note: '',
   });
-  const [savingEdit, setSavingEdit] = useState(false);
   const [savingMovement, setSavingMovement] = useState(false);
   const [exporting, setExporting] = useState(false);
-
-  // Keep page sync'd with filter changes that reset it.
-  const pageFromFilter = filters.page;
-  const limitFromFilter = filters.limit;
 
   // Debounce search so each keystroke doesn't fire a request.
   const searchDebounced = useDebounce(filters.q, 300);
@@ -147,21 +158,24 @@ export default function Inventory(props: InventoryProps) {
       fetchInventoryList({
         ...filters,
         q: searchDebounced,
-        page: debouncedPage,
+        page: filters.page,
         limit: rowsPerPage,
         sortField: sortField ?? undefined,
         sortOrder,
       })
     );
-  }, [tab, dispatch, searchDebounced, debouncedPage, rowsPerPage, filters.category, filters.brand,
+  }, [tab, dispatch, searchDebounced, filters.page, rowsPerPage, filters.category, filters.brand,
        filters.location, filters.workshopId, filters.stockStatus, filters.ageing,
-       filters.minPrice, filters.maxPrice, filters.minQty, filters.maxQty, sortField, sortOrder]);
+       filters.vehicleType, filters.partType, filters.minPrice, filters.maxPrice,
+       filters.minQty, filters.maxQty, sortField, sortOrder]);
 
   // Stats / insights load once per stock visit.
   useEffect(() => {
     if (tab === 'stock') {
       dispatch(fetchInventoryStatsThunk());
       dispatch(fetchInventoryInsightsThunk());
+      dispatch(fetchInventoryOptionsThunk());
+      dispatch(fetchStockAlertsThunk());
     }
   }, [tab]);
 
@@ -203,18 +217,18 @@ export default function Inventory(props: InventoryProps) {
   };
 
   const handleSearchChange = (value: string) => {
-    setFilters((f) => ({ ...f, q: value }));
+    setFilters((f) => ({ ...f, q: value, page: 1 }));
   };
 
   const handleQuickFilter = (key: string) => {
     if (key === 'all') {
-      setFilters((f) => ({ ...f, stockStatus: 'all', inStock: undefined, outOfStock: undefined, reorderLevel: undefined }));
+      setFilters((f) => ({ ...f, page: 1, stockStatus: 'all', inStock: undefined, outOfStock: undefined, reorderLevel: undefined }));
     } else if (key === 'in-stock') {
-      setFilters((f) => ({ ...f, stockStatus: 'in-stock', inStock: true, outOfStock: undefined, reorderLevel: undefined }));
+      setFilters((f) => ({ ...f, page: 1, stockStatus: 'in-stock', inStock: true, outOfStock: undefined, reorderLevel: undefined }));
     } else if (key === 'out-of-stock') {
-      setFilters((f) => ({ ...f, stockStatus: 'out-of-stock', inStock: undefined, outOfStock: true, reorderLevel: undefined }));
+      setFilters((f) => ({ ...f, page: 1, stockStatus: 'out-of-stock', inStock: undefined, outOfStock: true, reorderLevel: undefined }));
     } else if (key === 'reorder-level') {
-      setFilters((f) => ({ ...f, stockStatus: 'reorder-level', inStock: undefined, outOfStock: undefined, reorderLevel: true }));
+      setFilters((f) => ({ ...f, page: 1, stockStatus: 'low-stock', inStock: undefined, outOfStock: undefined, reorderLevel: true }));
     }
   };
 
@@ -272,10 +286,10 @@ export default function Inventory(props: InventoryProps) {
     if (format !== 'csv') return; // Excel export requires a backend endpoint today.
     setExporting(true);
     try {
-      const items = state.items;
-      const stats = state.stats;
-      const csv = exportToCsv(items, stats);
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const params = buildInventoryParams({ ...filters, q: searchDebounced }, sortField || undefined, sortOrder);
+      delete params.page;
+      delete params.limit;
+      const blob = await downloadInventoryFile('/inventory/export', params);
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -293,6 +307,15 @@ export default function Inventory(props: InventoryProps) {
     setSelectedItem(item);
     setDetailOpen(true);
     dispatch(fetchInventoryItemThunk(item.id));
+    dispatch(fetchStockHistoryThunk({ productId: item.id }));
+  };
+
+  const openAlertDetail = (alert: StockAlert) => {
+    setAlertMenuAnchor(null);
+    setSelectedItem(null);
+    setDetailOpen(true);
+    dispatch(fetchInventoryItemThunk(alert.productId));
+    dispatch(fetchStockHistoryThunk({ productId: alert.productId }));
   };
 
   const closeDetail = () => {
@@ -303,39 +326,41 @@ export default function Inventory(props: InventoryProps) {
 
   const openEditModal = (item: InventoryItem) => {
     setSelectedItem(item);
-    setEditForm({
-      quantity: String(item.inventory?.quantity ?? 0),
-      minimumLevel: String(item.inventory?.minimumLevel ?? 0),
-      location: item.inventory?.location ?? '',
-      unit: item.inventory?.unit ?? 'Units',
-    });
-    setEditModalOpen(true);
+    setPartFormError('');
+    setPartFormOpen(true);
   };
 
-  const handleEditSave = async () => {
-    if (!selectedItem) return;
-    setSavingEdit(true);
+  const openCreateModal = () => {
+    setSelectedItem(null);
+    setPartFormError('');
+    setPartFormOpen(true);
+  };
+
+  const refreshInventory = () => {
+    dispatch(fetchInventoryList({ ...filters, q: searchDebounced, page: filters.page, limit: rowsPerPage, sortField: sortField ?? undefined, sortOrder }));
+    dispatch(fetchInventoryStatsThunk());
+    dispatch(fetchStockAlertsThunk());
+    dispatch(fetchInventoryOptionsThunk());
+  };
+
+  const handlePartSave = async (payload: Record<string, any>) => {
+    setPartFormSaving(true);
+    setPartFormError('');
     try {
-      await dispatch(
-        updateStockThunk({
-          id: selectedItem.id,
-          payload: {
-            quantity: editForm.quantity !== '' ? Number(editForm.quantity) : undefined,
-            minimumLevel: editForm.minimumLevel !== '' ? Number(editForm.minimumLevel) : undefined,
-            location: editForm.location || undefined,
-            unit: editForm.unit || undefined,
-          },
-        })
-      ).unwrap();
-      setEditModalOpen(false);
+      await dispatch(saveInventoryProductThunk({ id: selectedItem?.id, payload })).unwrap();
+      setPartFormOpen(false);
+      dispatch(showToast({ severity: 'success', message: selectedItem ? 'Part updated successfully' : 'Part added successfully' }));
+      refreshInventory();
+    } catch (error: any) {
+      setPartFormError(String(error || 'Failed to save part'));
     } finally {
-      setSavingEdit(false);
+      setPartFormSaving(false);
     }
   };
 
-  const openMovementModal = (item: InventoryItem) => {
+  const openMovementModal = (item: InventoryItem, mode: 'add' | 'reduce') => {
     setSelectedItem(item);
-    setMovementForm({ transactionType: 'Inward', quantity: '', referenceType: '', referenceNumber: '', notes: '' });
+    setMovementForm({ mode, quantity: '', purchasePrice: '', reason: 'sale', note: '' });
     setMovementModalOpen(true);
   };
 
@@ -343,31 +368,41 @@ export default function Inventory(props: InventoryProps) {
     if (!selectedItem) return;
     const qty = Number(movementForm.quantity);
     if (!Number.isFinite(qty) || qty <= 0) return;
-    const sign = movementForm.transactionType === 'Issued' || movementForm.transactionType === 'Purchase Return' ? -1 : 1;
+    if (movementForm.mode === 'reduce' && qty > (selectedItem.inventory?.quantity ?? 0)) {
+      dispatch(showToast({ severity: 'error', message: 'Reduction cannot exceed available stock' }));
+      return;
+    }
     setSavingMovement(true);
     try {
-      await dispatch(
-        recordStockMovementThunk({
-          productId: selectedItem.id,
-          transactionType: movementForm.transactionType,
-          quantity: qty * sign,
-          reference: movementForm.referenceType || movementForm.referenceNumber
-            ? { type: movementForm.referenceType || 'Manual', number: movementForm.referenceNumber || '' }
-            : undefined,
-          notes: movementForm.notes,
-        })
-      ).unwrap();
+      await dispatch(changeProductStockThunk({
+        id: selectedItem.id,
+        mode: movementForm.mode,
+        payload: {
+          quantity: qty,
+          purchasePrice: movementForm.mode === 'add' && movementForm.purchasePrice !== '' ? Number(movementForm.purchasePrice) : undefined,
+          reason: movementForm.mode === 'reduce' ? movementForm.reason : 'purchase',
+          note: movementForm.note,
+        },
+      })).unwrap();
       setMovementModalOpen(false);
-      dispatch(
-        fetchInventoryList({
-          ...filters,
-          q: searchDebounced,
-          page: filters.page,
-          limit: rowsPerPage,
-        })
-      );
+      dispatch(showToast({ severity: 'success', message: movementForm.mode === 'add' ? 'Stock added successfully' : 'Stock reduced successfully' }));
+      refreshInventory();
+    } catch (error: any) {
+      dispatch(showToast({ severity: 'error', message: String(error || 'Failed to update stock') }));
     } finally {
       setSavingMovement(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!selectedItem) return;
+    try {
+      await dispatch(deleteInventoryProductThunk(selectedItem.id)).unwrap();
+      setDeleteDialogOpen(false);
+      dispatch(showToast({ severity: 'success', message: 'Part deleted successfully' }));
+      refreshInventory();
+    } catch (error: any) {
+      dispatch(showToast({ severity: 'error', message: String(error || 'Failed to delete part') }));
     }
   };
 
@@ -375,67 +410,12 @@ export default function Inventory(props: InventoryProps) {
 
   const pagination = state.items.length ? state.pagination : { page: 1, limit: rowsPerPage, total: state.items.length, totalPages: 1 };
 
-  // Derive filtered + sorted items for the table row renderer.
-  const tableItems = useMemo(() => {
-    const list = state.items;
-    const q = searchDebounced.trim().toLowerCase();
-    let filtered = list.filter((item) => {
-      if (!q) return true;
-      const haystack =
-        `${item.productCode} ${item.productName} ${item.brand || ''} ${item.category || ''} ${item.barcode || ''} ${item.inventory?.location || ''}`.toLowerCase();
-      return haystack.includes(q);
-    });
-    // Apply quick status filters.
-    if (filters.stockStatus === 'in-stock') filtered = filtered.filter((i) => computeStockStatus(i) === 'In Stock');
-    else if (filters.stockStatus === 'out-of-stock') filtered = filtered.filter((i) => computeStockStatus(i) === 'Out of Stock');
-    else if (filters.stockStatus === 'reorder-level') filtered = filtered.filter((i) => computeStockStatus(i) === 'Re-order Level');
-    // Apply ageing filter.
-    if (filters.ageing === 'fresh') filtered = filtered.filter((i) => getAgeingBucket(computeAgeingDays(i)).key === 'fresh');
-    else if (filters.ageing === 'ageing') filtered = filtered.filter((i) => getAgeingBucket(computeAgeingDays(i)).key === 'ageing');
-    else if (filters.ageing === 'dead') filtered = filtered.filter((i) => getAgeingBucket(computeAgeingDays(i)).key === 'dead');
-    // Apply numeric filters (client-side fallback).
-    if (filters.minPrice) {
-      const min = Number(filters.minPrice);
-      if (Number.isFinite(min)) filtered = filtered.filter((i) => (i.pricing?.costPrice ?? 0) >= min);
-    }
-    if (filters.maxPrice) {
-      const max = Number(filters.maxPrice);
-      if (Number.isFinite(max)) filtered = filtered.filter((i) => (i.pricing?.costPrice ?? 0) <= max);
-    }
-    if (filters.minQty) {
-      const min = Number(filters.minQty);
-      if (Number.isFinite(min)) filtered = filtered.filter((i) => (i.inventory?.quantity ?? 0) >= min);
-    }
-    if (filters.maxQty) {
-      const max = Number(filters.maxQty);
-      if (Number.isFinite(max)) filtered = filtered.filter((i) => (i.inventory?.quantity ?? 0) <= max);
-    }
-    // Sort.
-    if (sortField) {
-      filtered = [...filtered].sort((a, b) => {
-        const av = getCellValue(a, sortField);
-        const bv = getCellValue(b, sortField);
-        if (av == null && bv == null) return 0;
-        if (av == null) return 1;
-        if (bv == null) return -1;
-        if (typeof av === 'number' && typeof bv === 'number') {
-          return sortOrder === 'asc' ? av - bv : bv - av;
-        }
-        const astr = String(av).toLowerCase();
-        const bstr = String(bv).toLowerCase();
-        return sortOrder === 'asc' ? astr.localeCompare(bstr) : bstr.localeCompare(astr);
-      });
-    }
-    return filtered;
-  }, [state.items, searchDebounced, filters.stockStatus, filters.ageing, filters.minPrice, filters.maxPrice, filters.minQty, filters.maxQty, sortField, sortOrder]);
-
-  const paginatedItems = useMemo(() => {
-    const start = (filters.page - 1) * rowsPerPage;
-    return tableItems.slice(start, start + rowsPerPage);
-  }, [tableItems, filters.page, rowsPerPage]);
+  // Search, filters, sorting and pagination are applied by the API.
+  const tableItems = state.items;
+  const paginatedItems = state.items;
 
   const visibleCount = Math.min(paginatedItems.length, rowsPerPage);
-  const totalDisplayed = Math.min(pagination.total, tableItems.length);
+  const totalDisplayed = pagination.total;
 
   if (tab === 'stock' && state.loading && !state.items.length) {
     return <Loader label={t('common.loadingDashboard')} />;
@@ -463,6 +443,33 @@ export default function Inventory(props: InventoryProps) {
         <Box>
           <Typography variant="h5" fontWeight={700}>{t('inventory.title')}</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>{t('inventory.subtitle')}</Typography>
+        </Box>
+        <Box>
+          <Tooltip title="Low-stock alerts">
+            <IconButton
+              aria-label={`${state.alerts.length} inventory alerts`}
+              onClick={(event) => setAlertMenuAnchor(event.currentTarget)}
+              sx={{ border: 1, borderColor: 'divider' }}
+            >
+              <Badge badgeContent={state.alerts.length} color="error">
+                <NotificationsActiveIcon />
+              </Badge>
+            </IconButton>
+          </Tooltip>
+          <Menu anchorEl={alertMenuAnchor} open={Boolean(alertMenuAnchor)} onClose={() => setAlertMenuAnchor(null)} PaperProps={{ sx: { width: 360, maxHeight: 420 } }}>
+            {state.alerts.length === 0 && <MuiMenuItem disabled>No low-stock alerts</MuiMenuItem>}
+            {state.alerts.map((alert) => (
+              <MuiMenuItem key={alert.id} onClick={() => openAlertDetail(alert)} sx={{ whiteSpace: 'normal', py: 1.25 }}>
+                <Box sx={{ width: '100%' }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}>
+                    <Typography variant="body2" fontWeight={700}>{alert.productName}</Typography>
+                    <Chip size="small" color={alert.quantity === 0 ? 'error' : 'warning'} label={alert.quantity === 0 ? 'Out of stock' : 'Low stock'} />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">{alert.productCode} · Qty {alert.quantity} / {alert.minimumLevel}</Typography>
+                </Box>
+              </MuiMenuItem>
+            ))}
+          </Menu>
         </Box>
       </Box>
 
@@ -513,6 +520,11 @@ export default function Inventory(props: InventoryProps) {
         openDetail={openDetail}
         openEditModal={openEditModal}
         openMovementModal={openMovementModal}
+        openCreateModal={openCreateModal}
+        openCsvImport={() => setCsvImportOpen(true)}
+        openAgeModal={(item) => { setSelectedItem(item); setAgeDialogOpen(true); }}
+        openDeleteDialog={(item) => { setSelectedItem(item); setDeleteDialogOpen(true); }}
+        userRole={user?.role || ''}
         refreshTabData={refreshTabData}
       />}
 
@@ -604,21 +616,20 @@ export default function Inventory(props: InventoryProps) {
         item={state.current ?? selectedItem}
         movementHistory={state.movementHistory}
         loading={state.movementLoading}
-        refreshMovementHistory={async () => {
-          // Real backend would call GET /api/stock-transactions/:productId here.
+        refreshMovementHistory={async (historyFilters) => {
+          const productId = (state.current ?? selectedItem)?.id;
+          if (productId) await dispatch(fetchStockHistoryThunk({ productId, ...historyFilters })).unwrap();
         }}
       />
 
-      {/* Edit modal */}
-      <EditModal
-        t={t}
-        open={editModalOpen}
-        onClose={() => { setEditModalOpen(false); setSelectedItem(null); }}
+      <PartFormDialog
+        open={partFormOpen}
         item={selectedItem}
-        form={editForm}
-        setForm={setEditForm}
-        saving={savingEdit}
-        onSave={handleEditSave}
+        categories={state.options.categories}
+        saving={partFormSaving}
+        error={partFormError}
+        onClose={() => { setPartFormOpen(false); setSelectedItem(null); }}
+        onSave={handlePartSave}
       />
 
       {/* Movement modal */}
@@ -632,6 +643,33 @@ export default function Inventory(props: InventoryProps) {
         saving={savingMovement}
         onSave={handleMovementSave}
       />
+
+      <Dialog open={ageDialogOpen} onClose={() => setAgeDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Part Age</DialogTitle>
+        <DialogContent dividers>
+          <Typography variant="subtitle1" fontWeight={700}>{selectedItem?.productName}</Typography>
+          <Field label="First stock-in" value={formatDate(selectedItem?.firstStockInDate)} />
+          <Box sx={{ mt: 2 }}><Field label="Oldest remaining stock" value={formatDate(selectedItem?.oldestRemainingStockDate)} /></Box>
+          <Box sx={{ mt: 2 }}>
+            <Chip
+              label={`${selectedItem?.oldestRemainingStockDate ? Math.max(0, Math.floor((Date.now() - new Date(selectedItem.oldestRemainingStockDate).getTime()) / 86400000)) : 0} days`}
+              color={selectedItem?.oldestRemainingStockDate && (Date.now() - new Date(selectedItem.oldestRemainingStockDate).getTime()) / 86400000 > state.options.agedStockDays ? 'warning' : 'success'}
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions><Button onClick={() => setAgeDialogOpen(false)}>Close</Button></DialogActions>
+      </Dialog>
+
+      <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle>Delete Part</DialogTitle>
+        <DialogContent dividers><Typography>Delete {selectedItem?.productName}? Stock history will be retained.</Typography></DialogContent>
+        <DialogActions>
+          <Button variant="outlined" onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+          <Button color="error" variant="contained" onClick={handleDelete}>Delete</Button>
+        </DialogActions>
+      </Dialog>
+
+      <CsvImportDialog open={csvImportOpen} onClose={() => setCsvImportOpen(false)} onImported={refreshInventory} />
 
       {/* Export menu */}
       <Menu
@@ -698,6 +736,11 @@ function StockTab({
   openDetail,
   openEditModal,
   openMovementModal,
+  openCreateModal,
+  openCsvImport,
+  openAgeModal,
+  openDeleteDialog,
+  userRole,
   refreshTabData,
 }: {
   t: ReturnType<typeof useT>;
@@ -726,37 +769,31 @@ function StockTab({
   totalDisplayed: number;
   visibleCount: number;
   rowsPerPageOptions: number[];
-  state: ReturnType<typeof useSelector>;
+  state: RootState['inventory'];
   columns: typeof COLUMNS;
   openDetail: (item: InventoryItem) => void;
   openEditModal: (item: InventoryItem) => void;
-  openMovementModal: (item: InventoryItem) => void;
+  openMovementModal: (item: InventoryItem, mode: 'add' | 'reduce') => void;
+  openCreateModal: () => void;
+  openCsvImport: () => void;
+  openAgeModal: (item: InventoryItem) => void;
+  openDeleteDialog: (item: InventoryItem) => void;
+  userRole: string;
   refreshTabData: (tab: 'stock') => void;
 }) {
-  const dispatch = useDispatch();
-  const workshopOptions = useMemo(() => {
-    const set = new Set(state.items.map((i) => i.inventory?.workshopName).filter(Boolean));
-    return ['All Workshops', ...Array.from(set)];
-  }, [state.items]);
-  const locationOptions = useMemo(() => {
-    const set = new Set(state.items.map((i) => i.inventory?.location).filter(Boolean));
-    return ['All Locations', ...Array.from(set)];
-  }, [state.items]);
-  const brandOptions = useMemo(() => {
-    const set = new Set(state.items.map((i) => i.brand).filter(Boolean));
-    return ['All Brands', ...Array.from(set)];
-  }, [state.items]);
-  const categoryOptions = useMemo(() => {
-    const set = new Set(state.items.map((i) => i.category).filter(Boolean));
-    return ['All Categories', ...Array.from(set)];
-  }, [state.items]);
+  const dispatch = useAppDispatch();
+  const locationOptions = ['All Locations', ...state.options.locations];
+  const categoryOptions = ['All Categories', ...state.options.categories];
+  const canEdit = userRole === 'Admin' || userRole === 'Service Manager';
+  const canMoveStock = userRole !== 'Viewer';
+  const isAdmin = userRole === 'Admin';
 
   return (
     <Box>
       {/* KPI cards */}
       <Box sx={{ mb: 3, animation: 'fadeInUp 0.35s ease-out' }}>
         <Grid container spacing={2.5}>
-          <Grid item xs={12} sm={6} md={4} lg={2}>
+          <Grid item xs={12} sm={6} lg={3}>
             <KpiCard
               label={t('inventory.kpi.uniqueParts')}
               value={state.stats.uniquePartNos.toLocaleString()}
@@ -765,7 +802,7 @@ function StockTab({
               gradient="linear-gradient(135deg, #0f172a 0%, #334155 100%)"
             />
           </Grid>
-          <Grid item xs={12} sm={6} md={4} lg={2}>
+          <Grid item xs={12} sm={6} lg={3}>
             <KpiCard
               label={t('inventory.kpi.totalStock')}
               value={state.stats.totalStockItems.toLocaleString()}
@@ -775,41 +812,22 @@ function StockTab({
               gradient="linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)"
             />
           </Grid>
-          <Grid item xs={12} sm={6} md={4} lg={2}>
+          <Grid item xs={12} sm={6} lg={3}>
             <KpiCard
-              label={t('inventory.kpi.stockValue')}
-              value={formatCurrency(state.stats.stockValue)}
+              label="Stock Value (Purchase)"
+              value={formatCurrency(state.stats.purchaseValue)}
               icon={<TrendingUpIcon fontSize="small" />}
               color="#10b981"
               gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)"
             />
           </Grid>
-          <Grid item xs={12} sm={6} md={4} lg={2}>
+          <Grid item xs={12} sm={6} lg={3}>
             <KpiCard
-              label={t('inventory.kpi.reorder')}
-              value={state.stats.reorderItems}
-              icon={<WarningAmpIcon fontSize="small" />}
-              color="#f59e0b"
-              gradient="linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={4} lg={2}>
-            <KpiCard
-              label={t('inventory.kpi.outOfStock')}
-              value={state.stats.outOfStock}
-              icon={<AlertIcon fontSize="small" />}
-              color="#ef4444"
-              gradient="linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-            />
-          </Grid>
-          <Grid item xs={12} sm={6} md={4} lg={2}>
-            <KpiCard
-              label={t('inventory.kpi.deadStockValue')}
-              value={formatCurrency(state.stats.deadStockValue)}
-              sub={`${state.stats.deadStockCount} ${t('inventory.kpi.deadStockCount')}`}
-              icon={<InsightsIcon fontSize="small" />}
-              color="#8b5cf6"
-              gradient="linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)"
+              label="Stock Value (Sale)"
+              value={formatCurrency(state.stats.saleValue)}
+              icon={<TrendingUpIcon fontSize="small" />}
+              color="#10b981"
+              gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)"
             />
           </Grid>
         </Grid>
@@ -862,6 +880,9 @@ function StockTab({
       <Card sx={{ mb: 3 }}>
         <CardContent sx={{ p: 2 }}>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-end' }}>
+            <Typography variant="h6" sx={{ color: 'primary.main', minWidth: 130, alignSelf: 'center' }}>
+              Total {pagination.total} Parts
+            </Typography>
             <TextField
               size="small"
               label={t('inventory.search.placeholder')}
@@ -886,8 +907,8 @@ function StockTab({
                   label={t(`inventory.filter.${key === 'in-stock' ? 'inStock' : key === 'out-of-stock' ? 'outOfStock' : key === 'reorder-level' ? 'reorder' : 'all'}`)}
                   onClick={() => handleQuickFilter(key)}
                   clickable
-                  color={quickFilters === key ? 'primary' : 'default'}
-                  variant={quickFilters === key ? 'filled' : 'outlined'}
+                  color={(key === 'reorder-level' ? quickFilters === 'low-stock' : quickFilters === key) ? 'primary' : 'default'}
+                  variant={(key === 'reorder-level' ? quickFilters === 'low-stock' : quickFilters === key) ? 'filled' : 'outlined'}
                   sx={{ fontWeight: 600, cursor: 'pointer' }}
                 />
               ))}
@@ -895,27 +916,29 @@ function StockTab({
 
             <Divider orientation="vertical" flexItem sx={{ alignSelf: 'center', mx: 1 }} />
 
-            <TextField select size="small" label={t('inventory.filter.workshop')} value={filters.workshopId || ''} onChange={(e) => setFilters((f) => ({ ...f, workshopId: e.target.value, location: '' }))} sx={{ minWidth: 170 }}>
-              {workshopOptions.map((opt) => <MenuItem key={opt} value={opt === 'All Workshops' ? '' : opt}>{opt}</MenuItem>)}
+            <TextField select size="small" label="Vehicle Type" value={filters.vehicleType || ''} onChange={(e) => setFilters((f) => ({ ...f, vehicleType: e.target.value, page: 1 }))} sx={{ minWidth: 140 }}>
+              <MenuItem value="">All Vehicles</MenuItem>
+              {state.options.vehicleTypes.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
             </TextField>
 
-            <TextField select size="small" label={t('inventory.filter.location')} value={filters.location || ''} onChange={(e) => setFilters((f) => ({ ...f, location: e.target.value }))} sx={{ minWidth: 170 }}>
+            <TextField select size="small" label="Part Type" value={filters.partType || ''} onChange={(e) => setFilters((f) => ({ ...f, partType: e.target.value, page: 1 }))} sx={{ minWidth: 150 }}>
+              <MenuItem value="">All Part Types</MenuItem>
+              {state.options.partTypes.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+            </TextField>
+
+            <TextField select size="small" label={t('inventory.filter.location')} value={filters.location || ''} onChange={(e) => setFilters((f) => ({ ...f, location: e.target.value, page: 1 }))} sx={{ minWidth: 170 }}>
               {locationOptions.map((opt) => <MenuItem key={opt} value={opt === 'All Locations' ? '' : opt}>{opt}</MenuItem>)}
             </TextField>
 
-            <TextField select size="small" label={t('inventory.filter.brand')} value={filters.brand || ''} onChange={(e) => setFilters((f) => ({ ...f, brand: e.target.value }))} sx={{ minWidth: 150 }}>
-              {brandOptions.map((opt) => <MenuItem key={opt} value={opt === 'All Brands' ? '' : opt}>{opt}</MenuItem>)}
-            </TextField>
-
-            <TextField select size="small" label={t('inventory.filter.category')} value={filters.category || ''} onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value }))} sx={{ minWidth: 150 }}>
+            <TextField select size="small" label={t('inventory.filter.category')} value={filters.category || ''} onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value, page: 1 }))} sx={{ minWidth: 150 }}>
               {categoryOptions.map((opt) => <MenuItem key={opt} value={opt === 'All Categories' ? '' : opt}>{opt}</MenuItem>)}
             </TextField>
 
-            <TextField select size="small" label={t('inventory.filter.status')} value={filters.stockStatus || 'all'} onChange={(e) => setFilters((f) => ({ ...f, stockStatus: e.target.value, inStock: undefined, outOfStock: undefined, reorderLevel: undefined }))} sx={{ minWidth: 150 }}>
+            <TextField select size="small" label={t('inventory.filter.status')} value={filters.stockStatus || 'all'} onChange={(e) => setFilters((f) => ({ ...f, stockStatus: e.target.value, inStock: undefined, outOfStock: undefined, reorderLevel: undefined, page: 1 }))} sx={{ minWidth: 150 }}>
               <MenuItem value="all">{t('inventory.filter.allStatuses')}</MenuItem>
-              <MenuItem value="fresh">{t('inventory.filter.fresh')}</MenuItem>
-              <MenuItem value="ageing">{t('inventory.filter.ageingRange')}</MenuItem>
-              <MenuItem value="dead">{t('inventory.filter.dead')}</MenuItem>
+              <MenuItem value="in-stock">In Stock</MenuItem>
+              <MenuItem value="out-of-stock">Out of Stock</MenuItem>
+              <MenuItem value="low-stock">Low Stock</MenuItem>
             </TextField>
 
             <TextField select size="small" label={t('inventory.filter.ageing')} value={filters.ageing || 'all'} onChange={(e) => setFilters((f) => ({ ...f, ageing: e.target.value }))} sx={{ minWidth: 160 }}>
@@ -926,10 +949,10 @@ function StockTab({
             </TextField>
 
             <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-end' }}>
-              <TextField size="small" type="number" label={t('inventory.filter.priceRange')} value={filters.minPrice} onChange={(e) => setFilters((f) => ({ ...f, minPrice: e.target.value }))} placeholder="Min" sx={{ width: 110 }} />
-              <TextField size="small" type="number" label={t('inventory.filter.priceRange')} value={filters.maxPrice} onChange={(e) => setFilters((f) => ({ ...f, maxPrice: e.target.value }))} placeholder="Max" sx={{ width: 110 }} />
-              <TextField size="small" type="number" label={t('inventory.filter.qtyRange')} value={filters.minQty} onChange={(e) => setFilters((f) => ({ ...f, minQty: e.target.value }))} placeholder="Min" sx={{ width: 110 }} />
-              <TextField size="small" type="number" label={t('inventory.filter.qtyRange')} value={filters.maxQty} onChange={(e) => setFilters((f) => ({ ...f, maxQty: e.target.value }))} placeholder="Max" sx={{ width: 110 }} />
+              <TextField size="small" type="number" label={t('inventory.filter.priceRange')} value={filters.minPrice} onChange={(e) => setFilters((f) => ({ ...f, minPrice: e.target.value, page: 1 }))} placeholder="Min" sx={{ width: 110 }} />
+              <TextField size="small" type="number" label={t('inventory.filter.priceRange')} value={filters.maxPrice} onChange={(e) => setFilters((f) => ({ ...f, maxPrice: e.target.value, page: 1 }))} placeholder="Max" sx={{ width: 110 }} />
+              <TextField size="small" type="number" label={t('inventory.filter.qtyRange')} value={filters.minQty} onChange={(e) => setFilters((f) => ({ ...f, minQty: e.target.value, page: 1 }))} placeholder="Min" sx={{ width: 110 }} />
+              <TextField size="small" type="number" label={t('inventory.filter.qtyRange')} value={filters.maxQty} onChange={(e) => setFilters((f) => ({ ...f, maxQty: e.target.value, page: 1 }))} placeholder="Max" sx={{ width: 110 }} />
             </Box>
 
             <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
@@ -941,6 +964,12 @@ function StockTab({
               <Button variant="outlined" size="small" startIcon={<DownloadIcon fontSize="small" />} onClick={openExportMenu} disabled={exporting}>
                 {t('inventory.action.export')}
               </Button>
+              <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreateModal} disabled={userRole === 'Viewer'}>
+                Add New
+              </Button>
+              <Button variant="outlined" size="small" startIcon={<UploadFileIcon />} onClick={openCsvImport} disabled={!canEdit}>
+                Upload Software CSV
+              </Button>
             </Box>
           </Box>
         </CardContent>
@@ -948,8 +977,9 @@ function StockTab({
 
       {/* Table */}
       <Card sx={{ mb: 3 }}>
-        <TableContainer>
-          <Table size="small" aria-label={t('inventory.title')}>
+        {state.error && <MuiAlert severity="error" sx={{ m: 2 }}>{state.error}</MuiAlert>}
+        <TableContainer sx={{ maxHeight: { lg: '70vh' }, overflow: 'auto' }}>
+          <Table stickyHeader size="small" aria-label={t('inventory.title')}>
             <TableHead>
               <TableRow>
                 {columns.map((col) => (
@@ -957,7 +987,7 @@ function StockTab({
                     key={col.field}
                     sortDirection={sortField === col.field ? (sortOrder === 'asc' ? 'asc' : 'desc') : false}
                     sx={{ cursor: col.sortable ? 'pointer' : 'default', whiteSpace: 'nowrap' }}
-                    align={col.numeric ? 'right' : 'left'}
+                    align={'numeric' in col && col.numeric ? 'right' : 'left'}
                     onClick={col.sortable ? () => handleSort(col.field, col.label) : undefined}
                     aria-label={col.label}
                   >
@@ -971,74 +1001,48 @@ function StockTab({
                     </Box>
                   </TableCell>
                 ))}
-                <TableCell align="right">{t('inventory.action.view')}</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {items.map((item) => {
                 const status = computeStockStatus(item);
-                const ageing = computeAgeingDays(item);
-                const bucket = getAgeingBucket(ageing);
-                const taxAmount = item.pricing?.sellingPrice ? +(item.pricing.sellingPrice * (item.pricing?.tax ?? 18) / 100).toFixed(2) : 0;
-                const value = (item.inventory?.quantity ?? 0) * (item.pricing?.costPrice ?? 0);
-                const taxTypeLabel = item.pricing?.tax ? t('inventory.common.taxTypeGst') : t('inventory.common.taxTypeNone');
+                const ageDays = item.oldestRemainingStockDate
+                  ? Math.max(0, Math.floor((Date.now() - new Date(item.oldestRemainingStockDate).getTime()) / 86400000))
+                  : 0;
 
                 return (
-                  <TableRow key={item.id} hover>
-                    <TableCell>
-                      <Typography variant="body2" fontWeight={600} sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>{item.productCode}</Typography>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2">{item.productName}</Typography>
-                    </TableCell>
-                    <TableCell>{item.brand || '—'}</TableCell>
+                  <TableRow
+                    key={item.id}
+                    hover
+                    sx={{ bgcolor: status === 'Out of Stock' ? 'error.light' : status === 'Re-order Level' ? 'warning.light' : undefined }}
+                  >
+                    <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.72rem' }}>{formatBarcode(item.barcode)}</Typography></TableCell>
+                    <TableCell><Typography variant="body2" fontWeight={600}>{item.productName}</Typography></TableCell>
+                    <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace' }}>{item.productCode}</Typography></TableCell>
+                    <TableCell>{item.vehicleType || '—'}</TableCell>
+                    <TableCell align="right"><Chip label={item.inventory?.quantity ?? 0} size="small" color={STOCK_STATUS_COLORS[status]} /></TableCell>
                     <TableCell>{item.category || '—'}</TableCell>
-                    <TableCell align="right">{item.inventory?.quantity ?? 0}</TableCell>
-                    <TableCell align="right">{item.inventory?.minimumLevel ?? 0}</TableCell>
-                    <TableCell>
-                      <Chip label={STOCK_STATUS_LABELS[status]} size="small" color={STOCK_STATUS_COLORS[status]} variant="filled" sx={{ fontWeight: 600 }} />
-                    </TableCell>
+                    <TableCell>{item.subCategory || '—'}</TableCell>
+                    <TableCell>{item.inventory?.location || '—'}</TableCell>
                     <TableCell align="right">{formatCurrency(item.pricing?.costPrice ?? 0)}</TableCell>
                     <TableCell align="right">{formatCurrency(item.pricing?.sellingPrice ?? 0)}</TableCell>
-                    <TableCell align="right">{item.pricing?.tax ?? 18}%</TableCell>
-                    <TableCell align="right">{formatCurrency(taxAmount)}</TableCell>
-                    <TableCell align="right">{formatCurrency(value)}</TableCell>
-                    <TableCell>{item.inventory?.rackNumber || '—'}</TableCell>
-                    <TableCell>
-                      <Typography variant="body2">{item.inventory?.workshopName || '—'}</Typography>
-                      <Typography variant="caption" color="text.secondary">{item.inventory?.location || '—'}</Typography>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Button size="small" color="success" variant="outlined" disabled={!canMoveStock} onClick={() => openMovementModal(item, 'add')}>Add</Button>{' '}
+                      <Button size="small" color="error" variant="outlined" disabled={!canMoveStock || (item.inventory?.quantity ?? 0) === 0} onClick={() => openMovementModal(item, 'reduce')}>Reduce</Button>{' '}
+                      <Button size="small" variant="outlined" disabled={!canEdit} onClick={() => openEditModal(item)}>Edit</Button>
                     </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.7rem', letterSpacing: '0.02em' }}>{formatBarcode(item.barcode)}</Typography>
-                    </TableCell>
-                    <TableCell align="right">
-                      <Chip label={`${ageing}d`} size="small" color={bucket.color as any} variant="filled" sx={{ fontWeight: 600, fontSize: '0.65rem' }} />
-                    </TableCell>
-                    <TableCell>{formatDate(item.lastPurchaseDate)}</TableCell>
-                    <TableCell>{formatDate(item.lastMovementDate || item.updatedAt)}</TableCell>
-                    <TableCell align="right">
-                      <Tooltip title={t('inventory.action.view')}>
-                        <IconButton size="small" onClick={() => openDetail(item)} title={t('inventory.action.view')}>
-                          <ViewIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title={t('inventory.action.edit')}>
-                        <IconButton size="small" onClick={() => openEditModal(item)} title={t('inventory.action.edit')}>
-                          <EditIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                      <Tooltip title={t('inventory.action.movement')}>
-                        <IconButton size="small" onClick={() => openMovementModal(item)} title={t('inventory.action.movement')}>
-                          <StockIcon fontSize="small" />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
+                    <TableCell><Chip label={item.partType || 'Other'} size="small" color={item.partType === 'OEM' ? 'warning' : 'default'} /></TableCell>
+                    <TableCell><Button size="small" variant="contained" onClick={() => openDetail(item)}>View</Button></TableCell>
+                    <TableCell>{item.remark || '—'}</TableCell>
+                    <TableCell>{item.employeeName || '—'}</TableCell>
+                    <TableCell><Button size="small" variant="contained" color={ageDays > state.options.agedStockDays ? 'warning' : 'primary'} onClick={() => openAgeModal(item)}>View</Button></TableCell>
+                    <TableCell><IconButton aria-label={`Delete ${item.productName}`} color="error" disabled={!isAdmin} onClick={() => openDeleteDialog(item)}><DeleteIcon /></IconButton></TableCell>
                   </TableRow>
                 );
               })}
               {items.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={columns.length + 1} align="center" sx={{ py: 6 }}>
+                  <TableCell colSpan={columns.length} align="center" sx={{ py: 6 }}>
                     <Box sx={{ textAlign: 'center' }}>
                       <Typography variant="body1" color="text.secondary" sx={{ mb: 0.5 }}>{t('inventory.empty.title')}</Typography>
                       <Typography variant="body2" color="text.secondary">{t('inventory.empty.sub')}</Typography>
@@ -1086,7 +1090,7 @@ function StockAlertTab({
   setAlertTypeFilter,
 }: {
   t: ReturnType<typeof useT>;
-  state: ReturnType<typeof useSelector>;
+  state: RootState['inventory'];
   alertTypeFilter: string | null;
   setAlertTypeFilter: (v: string | null) => void;
 }) {
@@ -1266,10 +1270,13 @@ function InventoryDetailModal({
   open: boolean;
   onClose: () => void;
   item: InventoryItem | null;
-  movementHistory: Array<{ id: string; transactionType: string; quantity: number; reference?: { type?: string; number?: string }; stockBefore: number; stockAfter: number; recordedAt: string }>;
+  movementHistory: StockMovement[];
   loading: boolean;
-  refreshMovementHistory: () => Promise<void>;
+  refreshMovementHistory: (filters: { type?: string; from?: string; to?: string }) => Promise<void>;
 }) {
+  const [historyType, setHistoryType] = useState('');
+  const [historyFrom, setHistoryFrom] = useState('');
+  const [historyTo, setHistoryTo] = useState('');
   const status = item ? computeStockStatus(item) : null;
   const ageing = item ? computeAgeingDays(item) : 0;
   const bucket = item ? getAgeingBucket(ageing) : AGEING_BUCKETS[0];
@@ -1344,6 +1351,15 @@ function InventoryDetailModal({
             {/* Movement History */}
             <Box>
               <Typography variant="subtitle2" fontWeight={700} sx={{ mb: 1, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: '0.05em', fontSize: '0.65rem' }}>{t('inventory.detail.movementHistory')}</Typography>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mb: 1.5 }}>
+                <TextField select size="small" label="Type" value={historyType} onChange={(event) => setHistoryType(event.target.value)} sx={{ minWidth: 130 }}>
+                  <MenuItem value="">All types</MenuItem>
+                  {['Add', 'Reduce', 'Sale', 'Adjustment', 'Inward', 'Issued', 'Purchase Return', 'Opening'].map((type) => <MenuItem key={type} value={type}>{type}</MenuItem>)}
+                </TextField>
+                <TextField size="small" type="date" label="From" InputLabelProps={{ shrink: true }} value={historyFrom} onChange={(event) => setHistoryFrom(event.target.value)} />
+                <TextField size="small" type="date" label="To" InputLabelProps={{ shrink: true }} value={historyTo} onChange={(event) => setHistoryTo(event.target.value)} />
+                <Button size="small" variant="outlined" onClick={() => refreshMovementHistory({ type: historyType || undefined, from: historyFrom || undefined, to: historyTo || undefined })}>Apply</Button>
+              </Box>
               {movementHistory.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">{t('inventory.detail.noMovements')}</Typography>
               ) : (
@@ -1351,21 +1367,27 @@ function InventoryDetailModal({
                   <Table size="small">
                     <TableHead>
                       <TableRow>
-                        <TableCell>{t('inventory.detail.movementHistory')}</TableCell>
-                        <TableCell align="right">{t('inventory.table.qoh')}</TableCell>
-                        <TableCell>Reference</TableCell>
-                        <TableCell>{t('inventory.table.lastMovement')}</TableCell>
+                        <TableCell>Date</TableCell>
+                        <TableCell>Type</TableCell>
+                        <TableCell align="right">Qty Change</TableCell>
+                        <TableCell align="right">Balance</TableCell>
+                        <TableCell align="right">Price</TableCell>
+                        <TableCell>Employee</TableCell>
+                        <TableCell>Note</TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
                       {movementHistory.map((m) => (
                         <TableRow key={m.id}>
+                          <TableCell>{formatDateTime(m.recordedAt || m.createdAt)}</TableCell>
                           <TableCell>
                             <Chip label={m.transactionType} size="small" color={(m.quantity > 0 ? 'success' : 'error') as any} variant="filled" />
                           </TableCell>
                           <TableCell align="right">{m.quantity > 0 ? `+${m.quantity}` : m.quantity}</TableCell>
-                          <TableCell>{m.reference?.number || '—'}</TableCell>
-                          <TableCell>{formatDateTime(m.recordedAt)}</TableCell>
+                          <TableCell align="right">{m.stockAfter}</TableCell>
+                          <TableCell align="right">{m.unitPrice == null ? '—' : formatCurrency(m.unitPrice)}</TableCell>
+                          <TableCell>{typeof m.recordedBy === 'object' ? (m.recordedBy?.username || m.recordedBy?.email || '—') : '—'}</TableCell>
+                          <TableCell>{m.notes || m.reason || '—'}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -1451,13 +1473,6 @@ function EditModal({
 // Movement modal
 // ---------------------------------------------------------------------------
 
-const MOVEMENT_TYPES = [
-  { value: 'Inward', labelKey: 'inventory.movementModal.inward' },
-  { value: 'Issued', labelKey: 'inventory.movementModal.issued' },
-  { value: 'Purchase Return', labelKey: 'inventory.movementModal.purchaseReturn' },
-  { value: 'Adjustment', labelKey: 'inventory.movementModal.adjustment' },
-];
-
 function MovementModal({
   t,
   open,
@@ -1472,8 +1487,8 @@ function MovementModal({
   open: boolean;
   onClose: () => void;
   item: InventoryItem | null;
-  form: { transactionType: string; quantity: string; referenceType: string; referenceNumber: string; notes: string };
-  setForm: React.Dispatch<React.SetStateAction<{ transactionType: string; quantity: string; referenceType: string; referenceNumber: string; notes: string }>>;
+  form: { mode: 'add' | 'reduce'; quantity: string; purchasePrice: string; reason: string; note: string };
+  setForm: React.Dispatch<React.SetStateAction<{ mode: 'add' | 'reduce'; quantity: string; purchasePrice: string; reason: string; note: string }>>;
   saving: boolean;
   onSave: () => void;
 }) {
@@ -1481,7 +1496,7 @@ function MovementModal({
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', bgcolor: 'background.paper', px: 3 }}>
-        <Typography variant="h6" fontWeight={700}>{t('inventory.movementModal.title', { partNo })}</Typography>
+        <Typography variant="h6" fontWeight={700}>{form.mode === 'add' ? 'Add Stock' : 'Reduce Stock'} — {partNo}</Typography>
         <IconButton onClick={onClose} size="small">
           <CloseIcon fontSize="small" />
         </IconButton>
@@ -1489,28 +1504,25 @@ function MovementModal({
       <DialogContent dividers sx={{ pt: 1 }}>
         <Grid container spacing={2.5}>
           <Grid item xs={12}>
-            <TextField select fullWidth size="small" label={t('inventory.movementModal.transactionType')} value={form.transactionType} onChange={(e) => setForm((f) => ({ ...f, transactionType: e.target.value }))}>
-              {MOVEMENT_TYPES.map((mt) => <MenuItem key={mt.value} value={mt.value}>{t(mt.labelKey)}</MenuItem>)}
+            <TextField required fullWidth size="small" label="Quantity" type="number" value={form.quantity} onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} inputProps={{ min: 1, max: form.mode === 'reduce' ? item?.inventory?.quantity : undefined, step: 1 }} helperText={form.mode === 'reduce' ? `Available: ${item?.inventory?.quantity ?? 0}` : undefined} />
+          </Grid>
+          {form.mode === 'add' && <Grid item xs={12}>
+            <TextField fullWidth size="small" label="New Purchase Price (optional)" type="number" value={form.purchasePrice} onChange={(e) => setForm((f) => ({ ...f, purchasePrice: e.target.value }))} inputProps={{ min: 0, step: '0.01' }} InputProps={{ startAdornment: <InputAdornment position="start">₹</InputAdornment> }} />
+          </Grid>}
+          {form.mode === 'reduce' && <Grid item xs={12}>
+            <TextField required select fullWidth size="small" label="Reason" value={form.reason} onChange={(e) => setForm((f) => ({ ...f, reason: e.target.value }))}>
+              <MenuItem value="sale">Sale</MenuItem><MenuItem value="damage">Damage</MenuItem><MenuItem value="return">Return</MenuItem><MenuItem value="correction">Correction</MenuItem>
             </TextField>
-          </Grid>
+          </Grid>}
           <Grid item xs={12}>
-            <TextField fullWidth size="small" label={t('inventory.movementModal.quantity')} type="number" value={form.quantity} onChange={(e) => setForm((f) => ({ ...f, quantity: e.target.value }))} inputProps={{ min: 0, step: 1 }} helperText="Positive qty increases stock; for 'Issued' and 'Purchase Return' the system records the negative movement." />
-          </Grid>
-          <Grid item xs={12}>
-            <TextField fullWidth size="small" label={t('inventory.movementModal.referenceType')} value={form.referenceType} onChange={(e) => setForm((f) => ({ ...f, referenceType: e.target.value }))} placeholder="e.g. Invoice, Job Card, Manual" />
-          </Grid>
-          <Grid item xs={12}>
-            <TextField fullWidth size="small" label={t('inventory.movementModal.referenceNumber')} value={form.referenceNumber} onChange={(e) => setForm((f) => ({ ...f, referenceNumber: e.target.value }))} placeholder="e.g. INV-1002" />
-          </Grid>
-          <Grid item xs={12}>
-            <TextField fullWidth size="small" label={t('inventory.movementModal.notes')} value={form.notes} onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))} multiline rows={2} />
+            <TextField fullWidth size="small" label="Note" value={form.note} onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))} multiline rows={2} />
           </Grid>
         </Grid>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
         <Button onClick={onClose}>{t('inventory.action.cancel')}</Button>
-        <Button variant="contained" onClick={onSave} disabled={saving}>
-          {saving ? t('action.saving') : t('inventory.action.save')}
+        <Button variant="contained" onClick={onSave} disabled={saving || !form.quantity || Number(form.quantity) <= 0 || (form.mode === 'reduce' && !form.reason)}>
+          {saving ? t('action.saving') : form.mode === 'add' ? 'Add Stock' : 'Reduce Stock'}
         </Button>
       </DialogActions>
     </Dialog>

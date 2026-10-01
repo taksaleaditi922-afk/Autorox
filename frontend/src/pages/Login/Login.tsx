@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert,
   InputAdornment, IconButton, CircularProgress, Divider, Dialog,
@@ -19,10 +19,10 @@ import LanguageSwitcher from '../../components/LanguageSwitcher';
 import useT from '../../i18n/useT';
 
 export default function Login() {
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const t = useT();
-  const { loading, error } = useSelector((state) => state.auth);
+  const { loading, error } = useAppSelector((state) => state.auth);
   const [email, setEmail] = useState('admin@autorox.in');
   const [password, setPassword] = useState('AutoRox#2024');
   const [currentPassword, setCurrentPassword] = useState('');

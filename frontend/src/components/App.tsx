@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { setUnauthenticated } from '../redux/authSlice';
 import Layout from '../layouts/Layout';
 import ProtectedRoute from './ProtectedRoute';
 import Toast from './Toast';
@@ -25,11 +26,23 @@ const Reports = lazy(() => import('../pages/Reports/Reports'));
 const Inventory = lazy(() => import('../pages/Inventory/Inventory'));
 const Settings = lazy(() => import('../pages/Settings/Settings'));
 const SellProducts = lazy(() => import('../pages/SellProducts/SellProducts'));
+const CounterSaleWizard = lazy(() => import('../pages/CounterSale/CounterSaleWizard'));
 const BillDetails = lazy(() => import('../pages/BillDetails/BillDetails'));
 
 export default function App() {
-  const isAuth = useSelector((state) => state.auth.isAuthenticated);
-  const lang = useSelector((state) => state.language.lang);
+  const dispatch = useAppDispatch();
+  const isAuth = useAppSelector((state) => state.auth.isAuthenticated);
+  const lang = useAppSelector((state) => state.language.lang);
+
+  // The API client owns token refreshes. If refresh is impossible (for
+  // example, an old access token remains but its cookie has expired), keep
+  // Redux in sync with cleared storage so ProtectedRoute returns to login.
+  useEffect(() => {
+    const handleSessionExpired = () => dispatch(setUnauthenticated());
+    window.addEventListener('auth:logout', handleSessionExpired);
+
+    return () => window.removeEventListener('auth:logout', handleSessionExpired);
+  }, [dispatch]);
 
   // Reflect the selected language on <html> and flip direction for RTL locales.
   useEffect(() => {
@@ -69,9 +82,13 @@ export default function App() {
               <Route path="/reports" element={<Reports />} />
               <Route path="/inventory" element={<Inventory />} />
               <Route path="/settings" element={<Settings />} />
-              <Route path="/sell" element={<SellProducts />} />
-              <Route path="/sell/:id" element={<BillDetails />} />
-              <Route path="/sell/:id/edit" element={<BillDetails />} />
+              <Route path="/counter-sale" element={<SellProducts />} />
+              <Route path="/counter-sale/new" element={<CounterSaleWizard />} />
+              <Route path="/counter-sale/:id" element={<BillDetails />} />
+              <Route path="/counter-sale/:id/edit" element={<CounterSaleWizard />} />
+              <Route path="/sell" element={<Navigate to="/counter-sale" replace />} />
+              <Route path="/sell/:id" element={<Navigate to="/counter-sale" replace />} />
+              <Route path="/sell/:id/edit" element={<Navigate to="/counter-sale" replace />} />
             </Route>
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>

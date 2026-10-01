@@ -1,6 +1,8 @@
 import JobCard, { DOCUMENT_TYPES } from '../models/JobCard.js';
 import ApiError from '../utils/ApiError.js';
 import asyncHandler from '../utils/asyncHandler.js';
+import fs from 'fs';
+import path from 'path';
 
 // POST /api/jobcards/:id/documents  (multipart: file, type metadata)
 export const uploadDocument = asyncHandler(async (req, res) => {
@@ -23,7 +25,15 @@ export const uploadDocument = asyncHandler(async (req, res) => {
   jobCard.documents = jobCard.documents || [];
   jobCard.documents.push(doc);
   await jobCard.save();
-  res.status(201).json({ success: true, data: doc });
+  const storedDocument = jobCard.documents[jobCard.documents.length - 1];
+  const data = storedDocument.toObject();
+  res.status(201).json({
+    success: true,
+    data: {
+      ...data,
+      downloadUrl: `/api/jobcards/${jobCard._id}/documents/${storedDocument._id}/file`,
+    },
+  });
 });
 
 // GET /api/jobcards/:id/documents
@@ -31,6 +41,19 @@ export const getDocuments = asyncHandler(async (req, res) => {
   const jobCard = await JobCard.findById(req.params.id);
   if (!jobCard) throw new ApiError(404, 'Job card not found');
   res.json({ success: true, data: jobCard.documents || [] });
+});
+
+// GET /api/jobcards/:id/documents/:docId/file
+export const getDocumentFile = asyncHandler(async (req, res) => {
+  const jobCard = await JobCard.findById(req.params.id);
+  if (!jobCard) throw new ApiError(404, 'Job card not found');
+  const document = jobCard.documents?.id(req.params.docId);
+  if (!document) throw new ApiError(404, 'Document not found');
+
+  const absolutePath = path.resolve(document.filePath);
+  if (!fs.existsSync(absolutePath)) throw new ApiError(404, 'Stored file not found');
+  res.type(document.mimeType || 'application/octet-stream');
+  res.sendFile(absolutePath);
 });
 
 // DELETE /api/jobcards/:id/documents/:docId

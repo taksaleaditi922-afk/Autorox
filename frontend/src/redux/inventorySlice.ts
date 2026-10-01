@@ -6,12 +6,18 @@ import {
   fetchInventoryStats as fetchInventoryStatsApi,
   fetchInventoryInsights as fetchInventoryInsightsApi,
   fetchStockAlerts as fetchStockAlertsApi,
+  fetchInventoryOptions as fetchInventoryOptionsApi,
   fetchPurchaseOrders as fetchPurchaseOrdersApi,
   fetchInwardRecords as fetchInwardRecordsApi,
   fetchIssuedRecords as fetchIssuedRecordsApi,
   fetchPurchaseReturns as fetchPurchaseReturnsApi,
   updateStockFields as updateStockFieldsApi,
   createStockMovement as createStockMovementApi,
+  fetchStockMovements as fetchStockMovementsApi,
+  createInventoryProduct as createInventoryProductApi,
+  updateInventoryProduct as updateInventoryProductApi,
+  deleteInventoryProduct as deleteInventoryProductApi,
+  changeProductStock as changeProductStockApi,
   MOCK_ITEMS,
   MOCK_STATS,
   MOCK_INSIGHTS,
@@ -23,7 +29,8 @@ import {
   mockIssued,
   mockPurchaseReturns,
 } from '../services/inventoryService';
-import type { InventoryItem, InventoryStats, InventoryInsight, StockAlert, PurchaseOrder, InwardRecord, IssuedRecord, PurchaseReturn } from '../services/inventoryService';
+import type { InventoryItem, InventoryStats, InventoryInsight, StockAlert, PurchaseOrder, InwardRecord, IssuedRecord, PurchaseReturn, InventoryOptions, StockMovement } from '../services/inventoryService';
+import { buildInventoryParams } from '../services/types';
 import type { InventoryFilters } from '../services/types';
 
 type ApiResult<T> =
@@ -48,6 +55,8 @@ async function withFallback<T>(fetcher: () => Promise<T>, fallback: T, context: 
 const EMPTY_STATS: InventoryStats = {
   uniquePartNos: 0,
   totalStockItems: 0,
+  purchaseValue: 0,
+  saleValue: 0,
   stockValue: 0,
   lowStock: 0,
   outOfStock: 0,
@@ -70,32 +79,22 @@ export const fetchInventoryList = createAsyncThunk(
   'inventory/fetchList',
   async (filters: InventoryFilters, { rejectWithValue }) => {
     try {
-      const params = {
-        q: filters.q || undefined,
-        category: filters.category || undefined,
-        inStock: filters.inStock ? 'true' : undefined,
-        minStock: filters.minQty ? String(filters.minQty) : undefined,
-        page: String(filters.page),
-        limit: String(filters.limit),
-        sort: filters.sortField || undefined,
-        order: filters.sortOrder || undefined,
-      };
+      const params = buildInventoryParams(filters, filters.sortField, filters.sortOrder);
       const res = await fetchInventoryApi(params);
       return { data: res.data, pagination: res.pagination, source: 'api' };
     } catch (err: any) {
-      // Fallback to client-side mock + pagination for demo/edge case.
-      const start = (filters.page - 1) * filters.limit;
-      const slice = MOCK_ITEMS.slice(start, start + filters.limit);
-      return {
-        data: slice,
-        pagination: {
-          page: filters.page,
-          limit: filters.limit,
-          total: MOCK_ITEMS.length,
-          totalPages: Math.ceil(MOCK_ITEMS.length / filters.limit),
-        },
-        source: 'mock',
-      };
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load inventory');
+    }
+  }
+);
+
+export const fetchInventoryOptionsThunk = createAsyncThunk(
+  'inventory/fetchOptions',
+  async (_, { rejectWithValue }) => {
+    try {
+      return await fetchInventoryOptionsApi();
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load inventory filters');
     }
   }
 );
@@ -103,10 +102,11 @@ export const fetchInventoryList = createAsyncThunk(
 export const fetchInventoryStatsThunk = createAsyncThunk(
   'inventory/fetchStats',
   async (_, { rejectWithValue }) => {
-    const result = await withFallback(() => fetchInventoryStatsApi(), MOCK_STATS, 'stats');
-    if (result.success) return result.data;
-    // Recompute from the list the page will load if the list fetch also used mock.
-    return computeMockStats(MOCK_ITEMS);
+    try {
+      return await fetchInventoryStatsApi();
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load inventory totals');
+    }
   }
 );
 
@@ -122,16 +122,18 @@ export const fetchInventoryInsightsThunk = createAsyncThunk(
 export const fetchStockAlertsThunk = createAsyncThunk(
   'inventory/fetchAlerts',
   async (_, { rejectWithValue }) => {
-    const result = await withFallback(() => fetchStockAlertsApi(), [], 'alerts');
-    if (result.success) return result.data;
-    return computeMockAlerts(MOCK_ITEMS);
+    try {
+      return await fetchStockAlertsApi();
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load stock alerts');
+    }
   }
 );
 
 export const fetchPurchaseOrdersThunk = createAsyncThunk(
   'inventory/fetchOrders',
   async (_, { rejectWithValue }) => {
-    const result = await withFallback(() => fetchPurchaseOrdersApi(), mockOrders(24), 'orders');
+    const result = await withFallback(() => fetchPurchaseOrdersApi(), { data: mockOrders(24), pagination: { page: 1, limit: 24, total: 24, totalPages: 1 } }, 'orders');
     if (result.success) return result.data;
     return { data: mockOrders(24), pagination: { page: 1, limit: 24, total: 24, totalPages: 1 } };
   }
@@ -140,7 +142,7 @@ export const fetchPurchaseOrdersThunk = createAsyncThunk(
 export const fetchInwardRecordsThunk = createAsyncThunk(
   'inventory/fetchInward',
   async (_, { rejectWithValue }) => {
-    const result = await withFallback(() => fetchInwardRecordsApi(), mockInward(20), 'inward');
+    const result = await withFallback(() => fetchInwardRecordsApi(), { data: mockInward(20), pagination: { page: 1, limit: 20, total: 20, totalPages: 1 } }, 'inward');
     if (result.success) return result.data;
     return { data: mockInward(20), pagination: { page: 1, limit: 20, total: 20, totalPages: 1 } };
   }
@@ -149,7 +151,7 @@ export const fetchInwardRecordsThunk = createAsyncThunk(
 export const fetchIssuedRecordsThunk = createAsyncThunk(
   'inventory/fetchIssued',
   async (_, { rejectWithValue }) => {
-    const result = await withFallback(() => fetchIssuedRecordsApi(), mockIssued(22), 'issued');
+    const result = await withFallback(() => fetchIssuedRecordsApi(), { data: mockIssued(22), pagination: { page: 1, limit: 22, total: 22, totalPages: 1 } }, 'issued');
     if (result.success) return result.data;
     return { data: mockIssued(22), pagination: { page: 1, limit: 22, total: 22, totalPages: 1 } };
   }
@@ -158,7 +160,7 @@ export const fetchIssuedRecordsThunk = createAsyncThunk(
 export const fetchPurchaseReturnsThunk = createAsyncThunk(
   'inventory/fetchReturns',
   async (_, { rejectWithValue }) => {
-    const result = await withFallback(() => fetchPurchaseReturnsApi(), mockPurchaseReturns(14), 'returns');
+    const result = await withFallback(() => fetchPurchaseReturnsApi(), { data: mockPurchaseReturns(14), pagination: { page: 1, limit: 14, total: 14, totalPages: 1 } }, 'returns');
     if (result.success) return result.data;
     return { data: mockPurchaseReturns(14), pagination: { page: 1, limit: 14, total: 14, totalPages: 1 } };
   }
@@ -202,10 +204,54 @@ export const recordStockMovementThunk = createAsyncThunk(
   'inventory/movement',
   async (payload: { productId: string; transactionType: string; quantity: number; reference?: { type?: string; number?: string }; notes?: string }, { rejectWithValue }) => {
     try {
-      await createStockMovementApi(payload);
-      return { success: true };
+      return await createStockMovementApi(payload);
     } catch (err: any) {
       return rejectWithValue(err?.response?.data?.error || 'Failed to record stock movement');
+    }
+  }
+);
+
+export const fetchStockHistoryThunk = createAsyncThunk(
+  'inventory/history',
+  async ({ productId, type, from, to }: { productId: string; type?: string; from?: string; to?: string }, { rejectWithValue }) => {
+    try {
+      return await fetchStockMovementsApi(productId, { type, from, to });
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load stock history');
+    }
+  }
+);
+
+export const saveInventoryProductThunk = createAsyncThunk(
+  'inventory/saveProduct',
+  async ({ id, payload }: { id?: string; payload: Record<string, any> }, { rejectWithValue }) => {
+    try {
+      return id ? await updateInventoryProductApi(id, payload) : await createInventoryProductApi(payload);
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to save part');
+    }
+  }
+);
+
+export const deleteInventoryProductThunk = createAsyncThunk(
+  'inventory/deleteProduct',
+  async (id: string, { rejectWithValue }) => {
+    try {
+      await deleteInventoryProductApi(id);
+      return id;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to delete part');
+    }
+  }
+);
+
+export const changeProductStockThunk = createAsyncThunk(
+  'inventory/changeStock',
+  async ({ id, mode, payload }: { id: string; mode: 'add' | 'reduce'; payload: { quantity: number; purchasePrice?: number; reason?: string; note?: string } }, { rejectWithValue }) => {
+    try {
+      return await changeProductStockApi(id, mode, payload);
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to update stock');
     }
   }
 );
@@ -221,6 +267,7 @@ interface InventoryState {
   pagination: { page: number; limit: number; total: number; totalPages: number };
   loading: boolean;
   error: string | null;
+  options: InventoryOptions;
 
   // Stock alerts
   alerts: StockAlert[];
@@ -238,7 +285,7 @@ interface InventoryState {
   returnsLoading: boolean;
 
   // Movement history for a single item
-  movementHistory: { id: string; transactionType: string; quantity: number; reference?: { type?: string; number?: string }; stockBefore: number; stockAfter: number; recordedAt: string }[];
+  movementHistory: StockMovement[];
   movementLoading: boolean;
 }
 
@@ -250,6 +297,7 @@ const initialState: InventoryState = {
   pagination: { page: 1, limit: 20, total: 0, totalPages: 1 },
   loading: false,
   error: null,
+  options: { categories: [], locations: [], vehicleTypes: ['2W', '4W'], partTypes: ['OEM', 'Aftermarket', 'Other'], agedStockDays: 90 },
 
   alerts: [],
   alertsLoading: false,
@@ -299,6 +347,9 @@ const inventorySlice = createSlice({
         state.loading = false;
         state.error = action.payload as string;
       })
+      .addCase(fetchInventoryOptionsThunk.fulfilled, (state, action) => {
+        state.options = action.payload;
+      })
       // ---- Stats ----
       .addCase(fetchInventoryStatsThunk.pending, (state) => {
         // Keep existing stats visible; only refresh once fulfilled.
@@ -317,7 +368,7 @@ const inventorySlice = createSlice({
       })
       .addCase(fetchStockAlertsThunk.fulfilled, (state, action) => {
         state.alertsLoading = false;
-        state.alerts = action.payload;
+        state.alerts = (action.payload as { data: StockAlert[] }).data || [];
       })
       .addCase(fetchStockAlertsThunk.rejected, (state, action) => {
         state.alertsLoading = false;
@@ -394,12 +445,34 @@ const inventorySlice = createSlice({
       })
       // ---- Movement history ----
       .addCase(recordStockMovementThunk.fulfilled, (state, action) => {
-        // After a movement, refresh the current item and its list row.
-        // Real backend would return updated product; here we keep the existing
-        // payload shape and let the caller refetch if needed.
-        if (action.payload.success) {
-          // Mark movement recorded; list refresh handled by caller.
-        }
+        const product = action.payload.product;
+        const idx = state.items.findIndex((item) => item.id === product.id);
+        if (idx >= 0) state.items[idx] = product;
+        if (state.current?.id === product.id) state.current = product;
+      })
+      .addCase(fetchStockHistoryThunk.pending, (state) => {
+        state.movementLoading = true;
+      })
+      .addCase(fetchStockHistoryThunk.fulfilled, (state, action) => {
+        state.movementLoading = false;
+        state.movementHistory = action.payload;
+      })
+      .addCase(fetchStockHistoryThunk.rejected, (state) => {
+        state.movementLoading = false;
+        state.movementHistory = [];
+      })
+      .addCase(saveInventoryProductThunk.fulfilled, (state, action) => {
+        const index = state.items.findIndex((item) => item.id === action.payload.id);
+        if (index >= 0) state.items[index] = action.payload;
+        else state.items.unshift(action.payload);
+      })
+      .addCase(deleteInventoryProductThunk.fulfilled, (state, action) => {
+        state.items = state.items.filter((item) => item.id !== action.payload);
+      })
+      .addCase(changeProductStockThunk.fulfilled, (state, action) => {
+        const index = state.items.findIndex((item) => item.id === action.payload.product.id);
+        if (index >= 0) state.items[index] = action.payload.product;
+        if (state.current?.id === action.payload.product.id) state.current = action.payload.product;
       });
   },
 });

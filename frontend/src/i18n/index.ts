@@ -35,12 +35,16 @@ export function getStoredLanguage() {
  * itself so missing translations never render as blanks.
  * Supports `{placeholder}` interpolation via `vars`.
  */
-export function translate(lang, key, vars) {
-  const dict = dictionaries[lang] || dictionaries[DEFAULT_LANGUAGE];
+export function translate(
+  lang: string,
+  key: string,
+  vars?: Record<string, string | number>
+): string {
+  const dict = dictionaries[lang as keyof typeof dictionaries] || dictionaries[DEFAULT_LANGUAGE];
   let str = dict[key] ?? dictionaries[DEFAULT_LANGUAGE][key] ?? key;
   if (vars) {
     Object.keys(vars).forEach((name) => {
-      str = str.replace(new RegExp(`\\{${name}\\}`, 'g'), vars[name]);
+      str = str.replace(new RegExp(`\\{${name}\\}`, 'g'), String(vars[name]));
     });
   }
   return str;

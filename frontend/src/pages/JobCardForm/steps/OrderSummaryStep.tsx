@@ -19,6 +19,8 @@ import { Alert, Avatar, Box, Button, Card, CardContent, Chip, Collapse, Dialog, 
 import StaffPicker from '../../../components/jobCard/StaffPicker';
 import LineItemDialog from '../../../components/jobCard/LineItemDialog';
 import CatalogPicker from '../../../components/estimate/CatalogPicker';
+import PaymentAndDiscountSection from '../../../components/jobCard/PaymentAndDiscountSection';
+import AdvancePaymentModal, { type AdvancePaymentValues } from '../../../components/jobCard/AdvancePaymentModal';
 import { serviceLine, partLine, labourLine, packageLines } from './ServicesPartsStep';
 import { computeLineItem, computeOrderSummary, createLineItem, type JobCardLineItem } from '../../../utils/jobCard';
 import { estimatedDeliveryWarning } from '../../../utils/jobCardValidation';
@@ -43,12 +45,14 @@ export default function OrderSummaryStep({ form, errors, set, setSection, action
   const [staffTarget, setStaffTarget] = useState<number | 'supervisor' | null>(null);
   const [catalogOpen, setCatalogOpen] = useState(false);
   const [editor, setEditor] = useState<{ index: number | null; item: JobCardLineItem } | null>(null);
+  const [advanceOpen, setAdvanceOpen] = useState(false);
+  const [advanceBusy, setAdvanceBusy] = useState(false);
 
   const totals = useMemo(() => computeOrderSummary(form), [form]);
   const deliveryWarning = useMemo(() => estimatedDeliveryWarning(form), [form]);
   const advancePaid = totals.advanceDeducted;
   const paymentStatus = totals.total > 0 && totals.balanceDue <= 0 ? 'Paid' : 'Pending';
-  const locked = form.approval.status === 'approved';
+  const locked = actions?.requiresApproval !== false && form.approval.status === 'approved';
   const errorMessages = Array.from(new Set(Object.values(errors).filter(Boolean)));
 
   const update = (index: number, patch: Partial<JobCardLineItem>) =>
@@ -56,6 +60,16 @@ export default function OrderSummaryStep({ form, errors, set, setSection, action
   const add = (lines: JobCardLineItem[]) => {
     set({ lineItems: [...form.lineItems, ...lines] });
     setCatalogOpen(false);
+  };
+  const saveAdvance = async (values: AdvancePaymentValues) => {
+    const amount = Number(values.amount);
+    set({ advances: [...form.advances, { amount, paymentMode: values.paymentMethod, reference: values.remarks, recordedAt: new Date(values.date).toISOString(), recordedBy: actions?.currentUser || '' }] });
+    setAdvanceOpen(false);
+    if (actions?.persisted) {
+      setAdvanceBusy(true);
+      await actions.recordAdvance({ amount, paymentMode: values.paymentMethod, reference: values.remarks });
+      setAdvanceBusy(false);
+    }
   };
 
   return (
@@ -98,7 +112,7 @@ export default function OrderSummaryStep({ form, errors, set, setSection, action
         </Typography>
       </Collapse>
 
-      {form.approval.respondedAt && (
+      {actions?.requiresApproval !== false && form.approval.respondedAt && (
         <Typography variant="caption" role="status">
           {form.approval.status === 'approved' ? 'Approved' : 'Rejected'} by Customer on {formatDateTime(form.approval.respondedAt)}
         </Typography>
@@ -173,10 +187,11 @@ export default function OrderSummaryStep({ form, errors, set, setSection, action
               <Stack direction="row" alignItems="center" gap={1} mb={1.5}>
                 <PaymentsIcon fontSize="small" color="primary" />
                 <Typography variant="h6" fontWeight={700}>Advances</Typography>
+                <Button size="small" variant="outlined" sx={{ ml: 'auto' }} onClick={() => setAdvanceOpen(true)} disabled={locked || totals.balanceDue <= 0}>Add Advance Payment</Button>
               </Stack>
               {form.advances.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
-                  No advance recorded yet. Use “Add Advance” in the footer to record a deposit.
+                  No advance recorded yet. Use “Add Advance Payment” above to record a deposit.
                 </Typography>
               ) : (
                 <Stack divider={<Divider flexItem />} spacing={1}>
@@ -225,6 +240,13 @@ export default function OrderSummaryStep({ form, errors, set, setSection, action
           </Card>
         </Grid>
       </Grid>
+
+      <PaymentAndDiscountSection
+        summary={form.orderSummary}
+        grandTotal={totals.grandTotal}
+        setSummary={(patch) => setSection('orderSummary', patch)}
+        disabled={locked}
+      />
 
       {/* ------------------------------ service list -------------------------- */}
       <Card sx={{ borderRadius: 1, boxShadow: 2 }}>
@@ -335,6 +357,7 @@ export default function OrderSummaryStep({ form, errors, set, setSection, action
           />
         </DialogContent>
       </Dialog>
+      <AdvancePaymentModal isOpen={advanceOpen} context="order-summary" existingAdvances={form.advances.map((entry, index) => ({ id: String(index), amount: entry.amount, date: entry.recordedAt, paymentMethod: entry.paymentMode, remarks: entry.reference }))} maxAmount={totals.balanceDue} busy={advanceBusy} onClose={() => setAdvanceOpen(false)} onSave={saveAdvance} />
     </Box>
   );
 }
