@@ -24,6 +24,9 @@ const Advisors = lazy(() => import('../pages/Advisors/Advisors'));
 const Vehicles = lazy(() => import('../pages/Vehicles/Vehicles'));
 const Reports = lazy(() => import('../pages/Reports/Reports'));
 const Inventory = lazy(() => import('../pages/Inventory/Inventory'));
+const PartOrders = lazy(() => import('../pages/PartOrders/PartOrders'));
+const CreateBulkOrder = lazy(() => import('../pages/PartOrders/CreateBulkOrder'));
+const AddPartPage = lazy(() => import('../pages/Inventory/AddPartPage'));
 const Settings = lazy(() => import('../pages/Settings/Settings'));
 const SellProducts = lazy(() => import('../pages/SellProducts/SellProducts'));
 const CounterSaleWizard = lazy(() => import('../pages/CounterSale/CounterSaleWizard'));
@@ -80,7 +83,11 @@ export default function App() {
               <Route path="/vehicles" element={<Vehicles />} />
               <Route path="/advisors" element={<Advisors />} />
               <Route path="/reports" element={<Reports />} />
+              <Route path="/inventory/add" element={<AddPartPage />} />
               <Route path="/inventory" element={<Inventory />} />
+              <Route path="/part-orders" element={<PartOrders />} />
+              <Route path="/part-orders/bulk/new" element={<CreateBulkOrder />} />
+              <Route path="/part-orders/bulk/:id/edit" element={<CreateBulkOrder />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/counter-sale" element={<SellProducts />} />
               <Route path="/counter-sale/new" element={<CounterSaleWizard />} />

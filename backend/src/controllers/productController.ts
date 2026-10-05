@@ -128,7 +128,7 @@ export const getProducts = asyncHandler(async (req, res) => {
 export const createProduct = asyncHandler(async (req, res) => {
   const {
     productCode, partNumber, productName, barcode, vehicleType, category, subCategory,
-    partType, remark, description, pricing, inventory, supplier, images,
+    partType, remark, description, pricing, inventory, supplier, images, brand, hsn,
   } = req.body;
   const resolvedCode = String(productCode || partNumber || '').trim();
   if (!resolvedCode || !productName) {
@@ -150,6 +150,8 @@ export const createProduct = asyncHandler(async (req, res) => {
   const product = new Product({
     productCode: resolvedCode,
     productName,
+    brand,
+    hsn,
     barcode: barcode?.trim() || undefined,
     vehicleType,
     category,

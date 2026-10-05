@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useOutletContext } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { useDebounce } from '../../utils/useDebounce';
 import type { RootState } from '../../store/store';
@@ -8,6 +8,7 @@ import {
   Tabs, Tab, Table, TableHead, TableRow, TableBody, TableCell, TableContainer,
   TablePagination, Chip, Tooltip, Menu, MenuItem as MuiMenuItem, Divider,
   InputAdornment, Grid, Dialog, DialogTitle, DialogContent, DialogActions, Badge, Alert as MuiAlert,
+  Popover, Drawer, useMediaQuery,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -27,10 +28,13 @@ import {
   Add as AddIcon,
   DeleteOutline as DeleteIcon,
   UploadFile as UploadFileIcon,
+  FilterList as FilterIcon,
+  CurrencyRupee as RupeeIcon,
+  DirectionsCar as VehicleIcon,
+  LocalOffer as TagIcon,
 } from '@mui/icons-material';
 import { formatCurrency, formatDate, formatDateTime } from '../../utils/format';
 import Loader from '../../components/Loader';
-import KpiCard from '../../components/Dashboard/KpiCard';
 import useT from '../../i18n/useT';
 import {
   fetchInventoryList,
@@ -62,6 +66,7 @@ import {
 } from '../../services/inventoryService';
 import type { InventoryFilters, InventoryItem, StockAlert, StockMovement } from '../../services/inventoryService';
 import PartFormDialog from './PartFormDialog';
+import InventoryPageHeader from './InventoryPageHeader';
 import CsvImportDialog from './CsvImportDialog';
 import { showToast } from '../../redux/uiSlice';
 // ---------------------------------------------------------------------------
@@ -104,15 +109,166 @@ function getCellValue(item: InventoryItem, field: string): string | number | nul
   }
 }
 
+/** Header labels for the stock table. Multi-line labels use "\n" and are
+ *  rendered with `white-space: pre-line` so they wrap onto two lines like the
+ *  reference layout. */
+const HEADER_LABELS: Record<string, string> = {
+  barcode: 'Bar\nCode',
+  productName: 'Part Name',
+  productCode: 'Part Number',
+  vehicleType: 'Vehicle\nType',
+  'inventory.quantity': 'Available\nQuantity',
+  category: 'Category',
+  subCategory: 'Sub\nCategory',
+  'inventory.location': 'Location',
+  'pricing.costPrice': 'Purchase Price',
+  'pricing.sellingPrice': 'Selling Price',
+  stockActions: 'Stock',
+  partType: 'Part\nType',
+  history: 'Part\nHistory',
+  remark: 'Remark',
+  employeeName: 'Employee\nName',
+  age: 'Age',
+  delete: 'Delete',
+};
+
+const STATUS_FILTER_LABELS: Record<string, string> = {
+  'in-stock': 'In Stock',
+  'out-of-stock': 'Out of Stock',
+  'low-stock': 'Low Stock',
+};
+
+/** Compact stat card: value on top, label below, round tinted icon on the right. */
+function StatCard({ label, value, icon, tint, color }: {
+  label: string;
+  value: React.ReactNode;
+  icon: React.ReactNode;
+  tint: string;
+  color: string;
+}) {
+  return (
+    <Card sx={{ height: '100%' }}>
+      <CardContent sx={{ p: { xs: 2, sm: 2.5 }, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, height: '100%' }}>
+        <Box sx={{ minWidth: 0 }}>
+          <Typography variant="h5" fontWeight={800} sx={{ color: 'primary.main', lineHeight: 1.15, fontSize: { xs: '1.4rem', md: '1.5rem' } }}>
+            {value}
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>{label}</Typography>
+        </Box>
+        <Box sx={{ width: 48, height: 48, borderRadius: '50%', bgcolor: tint, color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          {icon}
+        </Box>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** All existing filters, relocated into a popover (desktop) / bottom sheet
+ *  (mobile). Every field keeps its original value, onChange and API param. */
+function FilterPanel({
+  t,
+  filters,
+  setFilters,
+  quickFilters,
+  handleQuickFilter,
+  resetFilters,
+  locationOptions,
+  categoryOptions,
+  state,
+  onClose,
+}: {
+  t: ReturnType<typeof useT>;
+  filters: InventoryFilters;
+  setFilters: React.Dispatch<React.SetStateAction<InventoryFilters>>;
+  quickFilters: string;
+  handleQuickFilter: (key: string) => void;
+  resetFilters: () => void;
+  locationOptions: string[];
+  categoryOptions: string[];
+  state: RootState['inventory'];
+  onClose: () => void;
+}) {
+  return (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Typography variant="subtitle1" fontWeight={700}>Filters</Typography>
+
+      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+        {(['all', 'in-stock', 'out-of-stock', 'reorder-level'] as const).map((key) => (
+          <Chip
+            key={key}
+            label={t(`inventory.filter.${key === 'in-stock' ? 'inStock' : key === 'out-of-stock' ? 'outOfStock' : key === 'reorder-level' ? 'reorder' : 'all'}`)}
+            onClick={() => handleQuickFilter(key)}
+            clickable
+            color={(key === 'reorder-level' ? quickFilters === 'low-stock' : quickFilters === key) ? 'primary' : 'default'}
+            variant={(key === 'reorder-level' ? quickFilters === 'low-stock' : quickFilters === key) ? 'filled' : 'outlined'}
+            sx={{ fontWeight: 600, cursor: 'pointer' }}
+          />
+        ))}
+      </Box>
+
+      <TextField select size="small" fullWidth label="Vehicle Type" value={filters.vehicleType || ''} onChange={(e) => setFilters((f) => ({ ...f, vehicleType: e.target.value, page: 1 }))}>
+        <MenuItem value="">All Vehicles</MenuItem>
+        {state.options.vehicleTypes.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+      </TextField>
+
+      <TextField select size="small" fullWidth label="Part Type" value={filters.partType || ''} onChange={(e) => setFilters((f) => ({ ...f, partType: e.target.value, page: 1 }))}>
+        <MenuItem value="">All Part Types</MenuItem>
+        {state.options.partTypes.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+      </TextField>
+
+      <TextField select size="small" fullWidth label={t('inventory.filter.location')} value={filters.location || ''} onChange={(e) => setFilters((f) => ({ ...f, location: e.target.value, page: 1 }))}>
+        {locationOptions.map((opt) => <MenuItem key={opt} value={opt === 'All Locations' ? '' : opt}>{opt}</MenuItem>)}
+      </TextField>
+
+      <TextField select size="small" fullWidth label={t('inventory.filter.category')} value={filters.category || ''} onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value, page: 1 }))}>
+        {categoryOptions.map((opt) => <MenuItem key={opt} value={opt === 'All Categories' ? '' : opt}>{opt}</MenuItem>)}
+      </TextField>
+
+      <TextField select size="small" fullWidth label={t('inventory.filter.status')} value={filters.stockStatus || 'all'} onChange={(e) => setFilters((f) => ({ ...f, stockStatus: e.target.value, inStock: undefined, outOfStock: undefined, reorderLevel: undefined, page: 1 }))}>
+        <MenuItem value="all">{t('inventory.filter.allStatuses')}</MenuItem>
+        <MenuItem value="in-stock">In Stock</MenuItem>
+        <MenuItem value="out-of-stock">Out of Stock</MenuItem>
+        <MenuItem value="low-stock">Low Stock</MenuItem>
+      </TextField>
+
+      <TextField select size="small" fullWidth label={t('inventory.filter.ageing')} value={filters.ageing || 'all'} onChange={(e) => setFilters((f) => ({ ...f, ageing: e.target.value }))}>
+        <MenuItem value="all">{t('inventory.filter.all')}</MenuItem>
+        <MenuItem value="fresh">{t('inventory.filter.fresh')}</MenuItem>
+        <MenuItem value="ageing">{t('inventory.filter.ageingRange')}</MenuItem>
+        <MenuItem value="dead">{t('inventory.filter.dead')}</MenuItem>
+      </TextField>
+
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <TextField size="small" type="number" fullWidth label={`${t('inventory.filter.priceRange')} (Min)`} value={filters.minPrice} onChange={(e) => setFilters((f) => ({ ...f, minPrice: e.target.value, page: 1 }))} />
+        <TextField size="small" type="number" fullWidth label={`${t('inventory.filter.priceRange')} (Max)`} value={filters.maxPrice} onChange={(e) => setFilters((f) => ({ ...f, maxPrice: e.target.value, page: 1 }))} />
+      </Box>
+
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        <TextField size="small" type="number" fullWidth label={`${t('inventory.filter.qtyRange')} (Min)`} value={filters.minQty} onChange={(e) => setFilters((f) => ({ ...f, minQty: e.target.value, page: 1 }))} />
+        <TextField size="small" type="number" fullWidth label={`${t('inventory.filter.qtyRange')} (Max)`} value={filters.maxQty} onChange={(e) => setFilters((f) => ({ ...f, maxQty: e.target.value, page: 1 }))} />
+      </Box>
+
+      <Box sx={{ display: 'flex', gap: 1, pt: 0.5 }}>
+        <Button variant="contained" fullWidth onClick={onClose}>Apply</Button>
+        <Button variant="outlined" fullWidth onClick={resetFilters}>Clear all</Button>
+      </Box>
+    </Box>
+  );
+}
+
 interface InventoryProps {
   // The page is rendered inside Layout; no extra props.
 }
 
 export default function Inventory(props: InventoryProps) {
   const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const t = useT();
   const state = useAppSelector((s) => s.inventory);
   const user = useAppSelector((s) => s.auth.user);
+  const { toggleDrawer } = (useOutletContext() as { toggleDrawer?: () => void } | null) || {};
+  const isMobile = useMediaQuery('(max-width:900px)');
+  const canEdit = user?.role === 'Admin' || user?.role === 'Service Manager';
 
   const [tab, setTab] = useState<InventoryTabId>('stock');
   const [filters, setFilters] = useState<InventoryFilters>(getDefaultFilters);
@@ -331,9 +487,7 @@ export default function Inventory(props: InventoryProps) {
   };
 
   const openCreateModal = () => {
-    setSelectedItem(null);
-    setPartFormError('');
-    setPartFormOpen(true);
+    navigate('/inventory/add');
   };
 
   const refreshInventory = () => {
@@ -438,24 +592,41 @@ export default function Inventory(props: InventoryProps) {
 
   return (
     <Box sx={{ animation: 'fadeInUp 0.35s ease-out' }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3, flexWrap: 'wrap', gap: 2 }}>
-        <Box>
-          <Typography variant="h5" fontWeight={700}>{t('inventory.title')}</Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>{t('inventory.subtitle')}</Typography>
-        </Box>
-        <Box>
+      <InventoryPageHeader
+        title={t('inventory.title')}
+        avatarLabel={(user?.name || user?.email || 'A').charAt(0).toUpperCase()}
+        onMenuClick={toggleDrawer}
+      >
           <Tooltip title="Low-stock alerts">
             <IconButton
               aria-label={`${state.alerts.length} inventory alerts`}
               onClick={(event) => setAlertMenuAnchor(event.currentTarget)}
-              sx={{ border: 1, borderColor: 'divider' }}
+              sx={{ border: 1, borderColor: 'divider', borderRadius: 2, width: 44, height: 44 }}
             >
-              <Badge badgeContent={state.alerts.length} color="error">
-                <NotificationsActiveIcon />
+              <Badge badgeContent={state.alerts.length} color="error" overlap="circular">
+                <NotificationsActiveIcon sx={{ color: 'text.secondary' }} />
               </Badge>
             </IconButton>
           </Tooltip>
+
+          <Button
+            variant="outlined"
+            startIcon={<UploadFileIcon fontSize="small" />}
+            onClick={() => setCsvImportOpen(true)}
+            disabled={!canEdit}
+            sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+          >
+            Upload Software CSV
+          </Button>
+          <IconButton
+            aria-label="Upload Software CSV"
+            onClick={() => setCsvImportOpen(true)}
+            disabled={!canEdit}
+            sx={{ display: { xs: 'inline-flex', sm: 'none' }, border: 1, borderColor: 'divider', borderRadius: 2, width: 44, height: 44 }}
+          >
+            <UploadFileIcon fontSize="small" />
+          </IconButton>
+
           <Menu anchorEl={alertMenuAnchor} open={Boolean(alertMenuAnchor)} onClose={() => setAlertMenuAnchor(null)} PaperProps={{ sx: { width: 360, maxHeight: 420 } }}>
             {state.alerts.length === 0 && <MuiMenuItem disabled>No low-stock alerts</MuiMenuItem>}
             {state.alerts.map((alert) => (
@@ -470,22 +641,7 @@ export default function Inventory(props: InventoryProps) {
               </MuiMenuItem>
             ))}
           </Menu>
-        </Box>
-      </Box>
-
-      {/* Tabs */}
-      <Card sx={{ mb: 3 }}>
-        <Tabs
-          value={TAB_IDS.indexOf(tab)}
-          onChange={handleTabChange}
-          sx={{ px: 2, bgcolor: 'background.paper' }}
-          aria-label={t('inventory.title')}
-        >
-          {INVENTORY_TABS.map((item) => (
-            <Tab key={item.id} id={item.id} label={t(`inventory.tab.${item.id === 'purchase-return' ? 'purchaseReturn' : item.id === 'stock-alert' ? 'stockAlert' : item.id}`)} />
-          ))}
-        </Tabs>
-      </Card>
+      </InventoryPageHeader>
 
       {/* Tab content */}
       {tab === 'stock' && <StockTab
@@ -525,6 +681,7 @@ export default function Inventory(props: InventoryProps) {
         openAgeModal={(item) => { setSelectedItem(item); setAgeDialogOpen(true); }}
         openDeleteDialog={(item) => { setSelectedItem(item); setDeleteDialogOpen(true); }}
         userRole={user?.role || ''}
+        isMobile={isMobile}
         refreshTabData={refreshTabData}
       />}
 
@@ -741,6 +898,7 @@ function StockTab({
   openAgeModal,
   openDeleteDialog,
   userRole,
+  isMobile,
   refreshTabData,
 }: {
   t: ReturnType<typeof useT>;
@@ -779,6 +937,7 @@ function StockTab({
   openAgeModal: (item: InventoryItem) => void;
   openDeleteDialog: (item: InventoryItem) => void;
   userRole: string;
+  isMobile: boolean;
   refreshTabData: (tab: 'stock') => void;
 }) {
   const dispatch = useAppDispatch();
@@ -787,47 +946,64 @@ function StockTab({
   const canEdit = userRole === 'Admin' || userRole === 'Service Manager';
   const canMoveStock = userRole !== 'Viewer';
   const isAdmin = userRole === 'Admin';
+  const [filterAnchor, setFilterAnchor] = useState<HTMLElement | null>(null);
+
+  const activeFilterChips = useMemo(() => {
+    const chips: { key: string; label: string; clear: () => void }[] = [];
+    if (filters.vehicleType) chips.push({ key: 'vehicleType', label: `Vehicle: ${filters.vehicleType}`, clear: () => setFilters((f) => ({ ...f, vehicleType: '', page: 1 })) });
+    if (filters.partType) chips.push({ key: 'partType', label: `Part Type: ${filters.partType}`, clear: () => setFilters((f) => ({ ...f, partType: '', page: 1 })) });
+    if (filters.category) chips.push({ key: 'category', label: `Category: ${filters.category}`, clear: () => setFilters((f) => ({ ...f, category: '', page: 1 })) });
+    if (filters.location) chips.push({ key: 'location', label: `Location: ${filters.location}`, clear: () => setFilters((f) => ({ ...f, location: '', page: 1 })) });
+    if (filters.stockStatus && filters.stockStatus !== 'all') chips.push({ key: 'stockStatus', label: `Status: ${STATUS_FILTER_LABELS[filters.stockStatus] || filters.stockStatus}`, clear: () => setFilters((f) => ({ ...f, stockStatus: 'all', inStock: undefined, outOfStock: undefined, reorderLevel: undefined, page: 1 })) });
+    if (filters.ageing && filters.ageing !== 'all') chips.push({ key: 'ageing', label: `Ageing: ${filters.ageing}`, clear: () => setFilters((f) => ({ ...f, ageing: 'all', page: 1 })) });
+    if (filters.minPrice) chips.push({ key: 'minPrice', label: `Min price: ${filters.minPrice}`, clear: () => setFilters((f) => ({ ...f, minPrice: '', page: 1 })) });
+    if (filters.maxPrice) chips.push({ key: 'maxPrice', label: `Max price: ${filters.maxPrice}`, clear: () => setFilters((f) => ({ ...f, maxPrice: '', page: 1 })) });
+    if (filters.minQty) chips.push({ key: 'minQty', label: `Min qty: ${filters.minQty}`, clear: () => setFilters((f) => ({ ...f, minQty: '', page: 1 })) });
+    if (filters.maxQty) chips.push({ key: 'maxQty', label: `Max qty: ${filters.maxQty}`, clear: () => setFilters((f) => ({ ...f, maxQty: '', page: 1 })) });
+    return chips;
+  }, [filters, setFilters]);
+
+  const filterButtonLabel = activeFilterChips.length === 0 ? 'All' : `Filters (${activeFilterChips.length})`;
 
   return (
     <Box>
-      {/* KPI cards */}
-      <Box sx={{ mb: 3, animation: 'fadeInUp 0.35s ease-out' }}>
+      {/* Summary cards */}
+      <Box sx={{ mb: 3 }}>
         <Grid container spacing={2.5}>
           <Grid item xs={12} sm={6} lg={3}>
-            <KpiCard
+            <StatCard
               label={t('inventory.kpi.uniqueParts')}
               value={state.stats.uniquePartNos.toLocaleString()}
-              icon={<StockIcon fontSize="small" />}
-              color="#0f172a"
-              gradient="linear-gradient(135deg, #0f172a 0%, #334155 100%)"
+              icon={<TagIcon fontSize="small" />}
+              tint="info.light"
+              color="info.main"
             />
           </Grid>
           <Grid item xs={12} sm={6} lg={3}>
-            <KpiCard
+            <StatCard
               label={t('inventory.kpi.totalStock')}
               value={state.stats.totalStockItems.toLocaleString()}
-              sub={t('inventory.kpi.totalStock')}
-              icon={<StockIcon fontSize="small" />}
-              color="#3b82f6"
-              gradient="linear-gradient(135deg, #3b82f6 0%, #2563eb 100%)"
+              icon={<VehicleIcon fontSize="small" />}
+              tint="warning.light"
+              color="warning.dark"
             />
           </Grid>
           <Grid item xs={12} sm={6} lg={3}>
-            <KpiCard
+            <StatCard
               label="Stock Value (Purchase)"
               value={formatCurrency(state.stats.purchaseValue)}
-              icon={<TrendingUpIcon fontSize="small" />}
-              color="#10b981"
-              gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)"
+              icon={<RupeeIcon fontSize="small" />}
+              tint="success.light"
+              color="success.main"
             />
           </Grid>
           <Grid item xs={12} sm={6} lg={3}>
-            <KpiCard
+            <StatCard
               label="Stock Value (Sale)"
               value={formatCurrency(state.stats.saleValue)}
-              icon={<TrendingUpIcon fontSize="small" />}
-              color="#10b981"
-              gradient="linear-gradient(135deg, #10b981 0%, #059669 100%)"
+              icon={<RupeeIcon fontSize="small" />}
+              tint="success.light"
+              color="success.main"
             />
           </Grid>
         </Grid>
@@ -876,20 +1052,20 @@ function StockTab({
         </CardContent>
       </Card>
 
-      {/* Search + filters */}
+      {/* Toolbar */}
       <Card sx={{ mb: 3 }}>
-        <CardContent sx={{ p: 2 }}>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'flex-end' }}>
-            <Typography variant="h6" sx={{ color: 'primary.main', minWidth: 130, alignSelf: 'center' }}>
+        <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            <Typography variant="h6" fontWeight={800} sx={{ color: 'primary.main', mr: 'auto', whiteSpace: 'nowrap' }}>
               Total {pagination.total} Parts
             </Typography>
+
             <TextField
               size="small"
-              label={t('inventory.search.placeholder')}
+              placeholder={t('inventory.search.placeholder')}
               value={filters.q}
               onChange={(e) => handleSearchChange(e.target.value)}
-              placeholder={t('inventory.search.placeholder')}
-              sx={{ flexGrow: 1, minWidth: 220 }}
+              sx={{ width: { xs: '100%', sm: 260 } }}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
@@ -899,102 +1075,118 @@ function StockTab({
               }}
             />
 
-            {/* Quick filters */}
-            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-              {(['all', 'in-stock', 'out-of-stock', 'reorder-level'] as const).map((key) => (
+            <Button
+              variant="outlined"
+              startIcon={<FilterIcon fontSize="small" />}
+              onClick={(e) => setFilterAnchor(e.currentTarget)}
+              sx={{ color: 'text.primary', borderColor: 'divider' }}
+            >
+              {filterButtonLabel}
+            </Button>
+
+            <Button variant="outlined" startIcon={<DownloadIcon fontSize="small" />} onClick={openExportMenu} disabled={exporting} sx={{ color: 'text.primary', borderColor: 'divider' }}>
+              Download
+            </Button>
+
+            <Button variant="contained" startIcon={<AddIcon />} onClick={openCreateModal} disabled={userRole === 'Viewer'}>
+              Add New
+            </Button>
+          </Box>
+
+          {activeFilterChips.length > 0 && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1.5 }}>
+              {activeFilterChips.map((chip) => (
                 <Chip
-                  key={key}
-                  label={t(`inventory.filter.${key === 'in-stock' ? 'inStock' : key === 'out-of-stock' ? 'outOfStock' : key === 'reorder-level' ? 'reorder' : 'all'}`)}
-                  onClick={() => handleQuickFilter(key)}
-                  clickable
-                  color={(key === 'reorder-level' ? quickFilters === 'low-stock' : quickFilters === key) ? 'primary' : 'default'}
-                  variant={(key === 'reorder-level' ? quickFilters === 'low-stock' : quickFilters === key) ? 'filled' : 'outlined'}
-                  sx={{ fontWeight: 600, cursor: 'pointer' }}
+                  key={chip.key}
+                  label={chip.label}
+                  onDelete={chip.clear}
+                  size="small"
+                  variant="outlined"
+                  sx={{ bgcolor: 'background.subtle', borderColor: 'divider' }}
                 />
               ))}
             </Box>
-
-            <Divider orientation="vertical" flexItem sx={{ alignSelf: 'center', mx: 1 }} />
-
-            <TextField select size="small" label="Vehicle Type" value={filters.vehicleType || ''} onChange={(e) => setFilters((f) => ({ ...f, vehicleType: e.target.value, page: 1 }))} sx={{ minWidth: 140 }}>
-              <MenuItem value="">All Vehicles</MenuItem>
-              {state.options.vehicleTypes.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-            </TextField>
-
-            <TextField select size="small" label="Part Type" value={filters.partType || ''} onChange={(e) => setFilters((f) => ({ ...f, partType: e.target.value, page: 1 }))} sx={{ minWidth: 150 }}>
-              <MenuItem value="">All Part Types</MenuItem>
-              {state.options.partTypes.map((opt) => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-            </TextField>
-
-            <TextField select size="small" label={t('inventory.filter.location')} value={filters.location || ''} onChange={(e) => setFilters((f) => ({ ...f, location: e.target.value, page: 1 }))} sx={{ minWidth: 170 }}>
-              {locationOptions.map((opt) => <MenuItem key={opt} value={opt === 'All Locations' ? '' : opt}>{opt}</MenuItem>)}
-            </TextField>
-
-            <TextField select size="small" label={t('inventory.filter.category')} value={filters.category || ''} onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value, page: 1 }))} sx={{ minWidth: 150 }}>
-              {categoryOptions.map((opt) => <MenuItem key={opt} value={opt === 'All Categories' ? '' : opt}>{opt}</MenuItem>)}
-            </TextField>
-
-            <TextField select size="small" label={t('inventory.filter.status')} value={filters.stockStatus || 'all'} onChange={(e) => setFilters((f) => ({ ...f, stockStatus: e.target.value, inStock: undefined, outOfStock: undefined, reorderLevel: undefined, page: 1 }))} sx={{ minWidth: 150 }}>
-              <MenuItem value="all">{t('inventory.filter.allStatuses')}</MenuItem>
-              <MenuItem value="in-stock">In Stock</MenuItem>
-              <MenuItem value="out-of-stock">Out of Stock</MenuItem>
-              <MenuItem value="low-stock">Low Stock</MenuItem>
-            </TextField>
-
-            <TextField select size="small" label={t('inventory.filter.ageing')} value={filters.ageing || 'all'} onChange={(e) => setFilters((f) => ({ ...f, ageing: e.target.value }))} sx={{ minWidth: 160 }}>
-              <MenuItem value="all">{t('inventory.filter.all')}</MenuItem>
-              <MenuItem value="fresh">{t('inventory.filter.fresh')}</MenuItem>
-              <MenuItem value="ageing">{t('inventory.filter.ageingRange')}</MenuItem>
-              <MenuItem value="dead">{t('inventory.filter.dead')}</MenuItem>
-            </TextField>
-
-            <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-end' }}>
-              <TextField size="small" type="number" label={t('inventory.filter.priceRange')} value={filters.minPrice} onChange={(e) => setFilters((f) => ({ ...f, minPrice: e.target.value, page: 1 }))} placeholder="Min" sx={{ width: 110 }} />
-              <TextField size="small" type="number" label={t('inventory.filter.priceRange')} value={filters.maxPrice} onChange={(e) => setFilters((f) => ({ ...f, maxPrice: e.target.value, page: 1 }))} placeholder="Max" sx={{ width: 110 }} />
-              <TextField size="small" type="number" label={t('inventory.filter.qtyRange')} value={filters.minQty} onChange={(e) => setFilters((f) => ({ ...f, minQty: e.target.value, page: 1 }))} placeholder="Min" sx={{ width: 110 }} />
-              <TextField size="small" type="number" label={t('inventory.filter.qtyRange')} value={filters.maxQty} onChange={(e) => setFilters((f) => ({ ...f, maxQty: e.target.value, page: 1 }))} placeholder="Max" sx={{ width: 110 }} />
-            </Box>
-
-            <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-end' }}>
-              <Tooltip title={t('inventory.action.resetFilters')}>
-                <IconButton onClick={resetFilters} size="small">
-                  <ResetIcon fontSize="small" />
-                </IconButton>
-              </Tooltip>
-              <Button variant="outlined" size="small" startIcon={<DownloadIcon fontSize="small" />} onClick={openExportMenu} disabled={exporting}>
-                {t('inventory.action.export')}
-              </Button>
-              <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={openCreateModal} disabled={userRole === 'Viewer'}>
-                Add New
-              </Button>
-              <Button variant="outlined" size="small" startIcon={<UploadFileIcon />} onClick={openCsvImport} disabled={!canEdit}>
-                Upload Software CSV
-              </Button>
-            </Box>
-          </Box>
+          )}
         </CardContent>
       </Card>
+
+      {/* Filter popover (desktop) */}
+      <Popover
+        open={Boolean(filterAnchor) && !isMobile}
+        anchorEl={filterAnchor}
+        onClose={() => setFilterAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        PaperProps={{ sx: { width: 380, p: 2.5, borderRadius: 3, mt: 1 } }}
+      >
+        <FilterPanel
+          t={t}
+          filters={filters}
+          setFilters={setFilters}
+          quickFilters={quickFilters}
+          handleQuickFilter={handleQuickFilter}
+          resetFilters={resetFilters}
+          locationOptions={locationOptions}
+          categoryOptions={categoryOptions}
+          state={state}
+          onClose={() => setFilterAnchor(null)}
+        />
+      </Popover>
+
+      {/* Filter bottom sheet (mobile) */}
+      <Drawer
+        anchor="bottom"
+        open={Boolean(filterAnchor) && isMobile}
+        onClose={() => setFilterAnchor(null)}
+        PaperProps={{ sx: { borderTopLeftRadius: 16, borderTopRightRadius: 16, maxHeight: '88vh' } }}
+      >
+        <Box sx={{ p: 2.5, overflowY: 'auto' }}>
+          <FilterPanel
+            t={t}
+            filters={filters}
+            setFilters={setFilters}
+            quickFilters={quickFilters}
+            handleQuickFilter={handleQuickFilter}
+            resetFilters={resetFilters}
+            locationOptions={locationOptions}
+            categoryOptions={categoryOptions}
+            state={state}
+            onClose={() => setFilterAnchor(null)}
+          />
+        </Box>
+      </Drawer>
 
       {/* Table */}
       <Card sx={{ mb: 3 }}>
         {state.error && <MuiAlert severity="error" sx={{ m: 2 }}>{state.error}</MuiAlert>}
         <TableContainer sx={{ maxHeight: { lg: '70vh' }, overflow: 'auto' }}>
-          <Table stickyHeader size="small" aria-label={t('inventory.title')}>
+          <Table stickyHeader size="small" aria-label={t('inventory.title')} sx={{ minWidth: 1400, '& .MuiTableCell-root': { py: 1.5 } }}>
             <TableHead>
               <TableRow>
                 {columns.map((col) => (
                   <TableCell
                     key={col.field}
                     sortDirection={sortField === col.field ? (sortOrder === 'asc' ? 'asc' : 'desc') : false}
-                    sx={{ cursor: col.sortable ? 'pointer' : 'default', whiteSpace: 'nowrap' }}
+                    sx={{
+                      cursor: col.sortable ? 'pointer' : 'default',
+                      whiteSpace: 'pre-line',
+                      textTransform: 'none',
+                      letterSpacing: 0,
+                      fontWeight: 700,
+                      color: 'text.primary',
+                      bgcolor: 'background.subtle',
+                      borderBottom: '1px solid',
+                      borderColor: 'divider',
+                      lineHeight: 1.25,
+                    }}
                     align={'numeric' in col && col.numeric ? 'right' : 'left'}
                     onClick={col.sortable ? () => handleSort(col.field, col.label) : undefined}
                     aria-label={col.label}
                   >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      {col.label}
+                    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
+                      {HEADER_LABELS[col.field] || col.label}
                       {col.sortable && (
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', fontWeight: 700 }}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', fontWeight: 700, textTransform: 'none' }}>
                           {sortField === col.field ? (sortOrder === 'asc' ? t('inventory.common.asc') : t('inventory.common.desc')) : ''}
                         </Typography>
                       )}
@@ -1005,38 +1197,66 @@ function StockTab({
             </TableHead>
             <TableBody>
               {items.map((item) => {
-                const status = computeStockStatus(item);
                 const ageDays = item.oldestRemainingStockDate
                   ? Math.max(0, Math.floor((Date.now() - new Date(item.oldestRemainingStockDate).getTime()) / 86400000))
                   : 0;
 
                 return (
-                  <TableRow
-                    key={item.id}
-                    hover
-                    sx={{ bgcolor: status === 'Out of Stock' ? 'error.light' : status === 'Re-order Level' ? 'warning.light' : undefined }}
-                  >
-                    <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace', fontSize: '0.72rem' }}>{formatBarcode(item.barcode)}</Typography></TableCell>
-                    <TableCell><Typography variant="body2" fontWeight={600}>{item.productName}</Typography></TableCell>
-                    <TableCell><Typography variant="body2" sx={{ fontFamily: 'monospace' }}>{item.productCode}</Typography></TableCell>
-                    <TableCell>{item.vehicleType || '—'}</TableCell>
-                    <TableCell align="right"><Chip label={item.inventory?.quantity ?? 0} size="small" color={STOCK_STATUS_COLORS[status]} /></TableCell>
-                    <TableCell>{item.category || '—'}</TableCell>
-                    <TableCell>{item.subCategory || '—'}</TableCell>
-                    <TableCell>{item.inventory?.location || '—'}</TableCell>
-                    <TableCell align="right">{formatCurrency(item.pricing?.costPrice ?? 0)}</TableCell>
-                    <TableCell align="right">{formatCurrency(item.pricing?.sellingPrice ?? 0)}</TableCell>
-                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
-                      <Button size="small" color="success" variant="outlined" disabled={!canMoveStock} onClick={() => openMovementModal(item, 'add')}>Add</Button>{' '}
-                      <Button size="small" color="error" variant="outlined" disabled={!canMoveStock || (item.inventory?.quantity ?? 0) === 0} onClick={() => openMovementModal(item, 'reduce')}>Reduce</Button>{' '}
-                      <Button size="small" variant="outlined" disabled={!canEdit} onClick={() => openEditModal(item)}>Edit</Button>
+                  <TableRow key={item.id} hover>
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{formatBarcode(item.barcode)}</Typography>
                     </TableCell>
-                    <TableCell><Chip label={item.partType || 'Other'} size="small" color={item.partType === 'OEM' ? 'warning' : 'default'} /></TableCell>
-                    <TableCell><Button size="small" variant="contained" onClick={() => openDetail(item)}>View</Button></TableCell>
-                    <TableCell>{item.remark || '—'}</TableCell>
-                    <TableCell>{item.employeeName || '—'}</TableCell>
-                    <TableCell><Button size="small" variant="contained" color={ageDays > state.options.agedStockDays ? 'warning' : 'primary'} onClick={() => openAgeModal(item)}>View</Button></TableCell>
-                    <TableCell><IconButton aria-label={`Delete ${item.productName}`} color="error" disabled={!isAdmin} onClick={() => openDeleteDialog(item)}><DeleteIcon /></IconButton></TableCell>
+                    <TableCell><Typography variant="body2">{item.productName}</Typography></TableCell>
+                    <TableCell><Typography variant="body2">{item.productCode}</Typography></TableCell>
+                    <TableCell><Typography variant="body2" fontWeight={700}>{item.vehicleType || '—'}</Typography></TableCell>
+                    <TableCell align="center"><Typography variant="body2" fontWeight={700}>{item.inventory?.quantity ?? 0}</Typography></TableCell>
+                    <TableCell>{item.category || ''}</TableCell>
+                    <TableCell>{item.subCategory || ''}</TableCell>
+                    <TableCell><Typography variant="body2" fontWeight={700}>{item.inventory?.location || '—'}</Typography></TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" fontWeight={700} sx={{ color: 'primary.main' }}>{formatCurrency(item.pricing?.costPrice ?? 0)}</Typography>
+                    </TableCell>
+                    <TableCell align="right">
+                      <Typography variant="body2" fontWeight={700} sx={{ color: 'primary.main' }}>{formatCurrency(item.pricing?.sellingPrice ?? 0)}</Typography>
+                    </TableCell>
+                    <TableCell sx={{ whiteSpace: 'nowrap' }}>
+                      <Button size="small" color="success" variant="outlined" disabled={!canMoveStock} onClick={() => openMovementModal(item, 'add')} sx={{ minWidth: 0, px: 1.25 }}>Add</Button>
+                      <Button size="small" color="primary" variant="outlined" disabled={!canMoveStock || (item.inventory?.quantity ?? 0) === 0} onClick={() => openMovementModal(item, 'reduce')} sx={{ minWidth: 0, px: 1.25, ml: 0.75 }}>Reduce</Button>
+                      <Button size="small" variant="outlined" disabled={!canEdit} onClick={() => openEditModal(item)} sx={{ minWidth: 0, px: 1.25, ml: 0.75, color: 'text.secondary', borderColor: 'divider' }}>Edit</Button>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={item.partType || 'Other'}
+                        size="small"
+                        sx={item.partType === 'OEM'
+                          ? { bgcolor: 'warning.light', color: 'text.primary', fontWeight: 700 }
+                          : { bgcolor: 'background.subtle', color: 'text.secondary', fontWeight: 600 }}
+                      />
+                    </TableCell>
+                    <TableCell><Button size="small" variant="contained" onClick={() => openDetail(item)} sx={{ minWidth: 0, px: 1.5 }}>View</Button></TableCell>
+                    <TableCell>{item.remark || 'N/A'}</TableCell>
+                    <TableCell><Typography variant="body2" fontWeight={700}>{item.employeeName || 'N/A'}</Typography></TableCell>
+                    <TableCell>
+                      <Button size="small" variant="contained" color={ageDays > state.options.agedStockDays ? 'warning' : 'primary'} onClick={() => openAgeModal(item)} sx={{ minWidth: 0, px: 1.5 }}>View</Button>
+                    </TableCell>
+                    <TableCell align="center">
+                      <IconButton
+                        aria-label={`Delete ${item.productName}`}
+                        disabled={!isAdmin}
+                        onClick={() => openDeleteDialog(item)}
+                        sx={{
+                          border: 1,
+                          borderColor: 'error.main',
+                          color: 'error.main',
+                          borderRadius: 1.5,
+                          p: 0.5,
+                          '&:hover': { bgcolor: 'error.light' },
+                          '&.Mui-disabled': { borderColor: 'divider', color: 'text.disabled' },
+                        }}
+                      >
+                        <DeleteIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
                   </TableRow>
                 );
               })}

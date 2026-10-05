@@ -17,6 +17,12 @@ export interface PrintableInvoiceItem {
 }
 
 export interface PrintableInvoice {
+  documentTitle?: string;
+  partyLabel?: string;
+  personLabel?: string;
+  signatureLabel?: string;
+  documentFooter?: string;
+  primaryColor?: string;
   invoiceNumber: string;
   date: string | Date;
   status: string;
@@ -207,6 +213,7 @@ export function buildInvoiceHtml(
     : '';
   const terms = (config.terms || []).map((term) => `<li>${display(term)}</li>`).join('');
 
+  const primaryColor = /^#[a-f\d]{3,8}$/i.test(invoice.primaryColor || '') ? invoice.primaryColor : '#bd0926';
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -216,9 +223,9 @@ export function buildInvoiceHtml(
   <style>
     *{box-sizing:border-box} body{margin:0;background:#eef1f5;color:#111827;font-family:Inter,"Segoe UI",Arial,sans-serif}
     .toolbar{width:210mm;max-width:calc(100% - 24px);margin:12px auto 0;display:flex;justify-content:flex-end;gap:8px}
-    button{font:inherit;padding:9px 16px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer} button.primary{background:#bd0926;color:#fff;border-color:#bd0926}
+    button{font:inherit;padding:9px 16px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;cursor:pointer} button.primary{background:${primaryColor};color:#fff;border-color:${primaryColor}}
     .sheet{width:210mm;min-height:297mm;margin:12px auto;padding:13mm 12mm;background:#fff;box-shadow:0 8px 30px rgba(15,23,42,.1)}
-    .header{display:flex;justify-content:space-between;gap:24px;padding-bottom:14px;border-bottom:2px solid #bd0926}.brand h1{margin:0;font-size:24px}.brand p,.muted{color:#64748b}.brand p{margin:3px 0;font-size:11px}.invoice{text-align:right}.invoice h2{margin:0;color:#bd0926;letter-spacing:.08em}.invoice strong{display:block;margin-top:5px;font-size:16px}.invoice div{font-size:11px;margin-top:3px}
+    .header{display:flex;justify-content:space-between;gap:24px;padding-bottom:14px;border-bottom:2px solid ${primaryColor}}.brand h1{margin:0;font-size:24px}.brand p,.muted{color:#64748b}.brand p{margin:3px 0;font-size:11px}.invoice{text-align:right}.invoice h2{margin:0;color:${primaryColor};letter-spacing:.08em}.invoice strong{display:block;margin-top:5px;font-size:16px}.invoice div{font-size:11px;margin-top:3px}
     .parties{display:grid;grid-template-columns:1.3fr 1fr;gap:18px;margin-top:18px}.panel{border:1px solid #e2e8f0;border-radius:7px;padding:11px}.panel h3{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin:0 0 8px}.detail{display:flex;justify-content:space-between;gap:12px;font-size:11px;margin-top:5px}.detail span{color:#64748b}.detail strong{text-align:right}
     table{width:100%;border-collapse:collapse;margin-top:18px;font-size:10.5px}th{text-align:left;background:#f8fafc;color:#475569;text-transform:uppercase;letter-spacing:.04em;font-size:9px;padding:8px 6px;border-bottom:1px solid #cbd5e1}td{padding:8px 6px;border-bottom:1px solid #e2e8f0;vertical-align:top}.number{text-align:right;white-space:nowrap}
     .bottom{display:grid;grid-template-columns:1fr 72mm;gap:24px;margin-top:18px}.notes h3,.terms h3{font-size:10px;text-transform:uppercase;color:#64748b;letter-spacing:.06em}.notes p,.terms ol{font-size:10px;color:#475569;padding-left:16px}.totals{font-size:11px}.total-row{display:flex;justify-content:space-between;padding:4px 0}.grand{font-size:15px;font-weight:800;border-top:2px solid #111827;margin-top:5px;padding-top:8px}.balance{background:#f8fafc;padding:7px;margin-top:5px;font-weight:700}.status{display:inline-block;padding:3px 8px;border:1px solid #15803d;border-radius:12px;color:#15803d;font-size:9px;font-weight:700}
@@ -230,12 +237,12 @@ export function buildInvoiceHtml(
 <body>
   <div class="toolbar no-print"><button class="primary" onclick="window.print()">Print / Save as PDF</button><button onclick="window.close()">Close</button></div>
   <main class="sheet">
-    <header class="header"><div class="brand"><h1>${display(config.company.name)}</h1><p>${display(config.company.address)}</p><p>${display(config.company.phone)} · ${display(config.company.email)}</p><p>GSTIN: ${display(config.company.gstNumber)}</p></div><div class="invoice"><h2>TAX INVOICE</h2><strong>${display(invoice.invoiceNumber)}</strong><div>Date: ${formatDate(invoice.date)}</div><div><span class="status">${display(invoice.status)}</span></div></div></header>
-    <section class="parties"><div class="panel"><h3>Bill To</h3><div class="detail"><span>Customer</span><strong>${display(invoice.customer.name)}</strong></div><div class="detail"><span>Mobile</span><strong>${display(invoice.customer.phone)}</strong></div>${invoice.customer.email ? `<div class="detail"><span>Email</span><strong>${display(invoice.customer.email)}</strong></div>` : ''}${invoice.customer.address ? `<div class="detail"><span>Address</span><strong>${display(invoice.customer.address)}</strong></div>` : ''}${invoice.customer.gstNumber ? `<div class="detail"><span>GSTIN</span><strong>${display(invoice.customer.gstNumber)}</strong></div>` : ''}</div><div class="panel"><h3>Invoice Details</h3>${vehicle}${invoice.advisor ? `<div class="detail"><span>Advisor</span><strong>${display(invoice.advisor)}</strong></div>` : ''}<div class="detail"><span>Payment Method</span><strong>${display(invoice.paymentMethod)}</strong></div></div></section>
+    <header class="header"><div class="brand"><h1>${display(config.company.name)}</h1><p>${display(config.company.address)}</p><p>${display(config.company.phone)} · ${display(config.company.email)}</p><p>GSTIN: ${display(config.company.gstNumber)}</p></div><div class="invoice"><h2>${display(invoice.documentTitle || 'TAX INVOICE')}</h2><strong>${display(invoice.invoiceNumber)}</strong><div>Date: ${formatDate(invoice.date)}</div><div><span class="status">${display(invoice.status)}</span></div></div></header>
+    <section class="parties"><div class="panel"><h3>${display(invoice.partyLabel || 'Bill To')}</h3><div class="detail"><span>${display(invoice.personLabel || 'Customer')}</span><strong>${display(invoice.customer.name)}</strong></div><div class="detail"><span>Mobile</span><strong>${display(invoice.customer.phone)}</strong></div>${invoice.customer.email ? `<div class="detail"><span>Email</span><strong>${display(invoice.customer.email)}</strong></div>` : ''}${invoice.customer.address ? `<div class="detail"><span>Address</span><strong>${display(invoice.customer.address)}</strong></div>` : ''}${invoice.customer.gstNumber ? `<div class="detail"><span>GSTIN</span><strong>${display(invoice.customer.gstNumber)}</strong></div>` : ''}</div><div class="panel"><h3>Invoice Details</h3>${vehicle}${invoice.advisor ? `<div class="detail"><span>Advisor</span><strong>${display(invoice.advisor)}</strong></div>` : ''}<div class="detail"><span>Payment Method</span><strong>${display(invoice.paymentMethod)}</strong></div></div></section>
     <table><thead><tr><th>#</th><th>Description</th><th>HSN/SAC</th><th class="number">Qty</th><th class="number">Rate</th><th class="number">Tax</th><th class="number">Amount</th></tr></thead><tbody>${rows || '<tr><td colspan="7">No invoice items</td></tr>'}</tbody></table>
     <section class="bottom"><div><div class="notes"><h3>Notes</h3><p>${display(invoice.notes, 'Thank you for your business.')}</p></div><div class="terms"><h3>Terms &amp; Conditions</h3><ol>${terms}</ol></div></div><div class="totals"><div class="total-row"><span>Subtotal</span><strong>${formatMoney(invoice.subtotal, config.currency)}</strong></div><div class="total-row"><span>Discount</span><strong>-${formatMoney(invoice.discount, config.currency)}</strong></div><div class="total-row"><span>Tax</span><strong>${formatMoney(invoice.tax, config.currency)}</strong></div><div class="total-row grand"><span>Grand Total</span><span>${formatMoney(invoice.grandTotal, config.currency)}</span></div><div class="total-row"><span>Amount Paid</span><strong>${formatMoney(invoice.amountPaid, config.currency)}</strong></div><div class="total-row balance"><span>Balance Due</span><span>${formatMoney(invoice.balanceDue, config.currency)}</span></div></div></section>
-    <section class="signatures"><div class="signature">Authorised Signatory</div><div class="signature">Customer Signature</div></section>
-    <footer class="footer">Computer generated tax invoice · ${display(config.company.name)} · ${display(config.company.phone)}</footer>
+    <section class="signatures"><div class="signature">Authorised Signatory</div><div class="signature">${display(invoice.signatureLabel || 'Customer Signature')}</div></section>
+    <footer class="footer">${display(invoice.documentFooter || 'Computer generated tax invoice')} · ${display(config.company.name)} · ${display(config.company.phone)}</footer>
   </main>
 </body>
 </html>`;

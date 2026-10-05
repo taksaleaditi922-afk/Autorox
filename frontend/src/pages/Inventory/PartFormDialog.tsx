@@ -6,7 +6,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import type { InventoryItem } from '../../services/inventoryService';
 
-const CATEGORY_SUBCATEGORIES: Record<string, string[]> = {
+export const CATEGORY_SUBCATEGORIES: Record<string, string[]> = {
   Brakes: ['Brake Pads', 'Brake Shoes', 'Discs & Drums', 'Brake Fluid'],
   Engine: ['Filters', 'Belts', 'Gaskets', 'Spark Plugs'],
   Electrical: ['Battery', 'Lighting', 'Switches', 'Wiring'],

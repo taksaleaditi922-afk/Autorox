@@ -23,6 +23,7 @@ const en = {
   'nav.reports': 'Reports',
   'nav.settings': 'Settings',
   'nav.inventory': 'Inventory',
+  'nav.partOrders': 'Part Orders',
 
   'action.notifications': 'Notifications',
   'action.noNotifications': 'No new notifications',

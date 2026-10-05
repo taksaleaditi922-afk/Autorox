@@ -43,11 +43,18 @@ export interface InventoryItem {
   firstStockInDate?: string;
   oldestRemainingStockDate?: string | null;
   brand?: string;
+  hsn?: string;
   description?: string;
   pricing: {
     costPrice: number;
     sellingPrice: number;
     tax: number;
+    purchaseTaxType?: 'NONE' | 'GST' | 'IGST';
+    purchaseTaxPercent?: number;
+    purchaseDiscountAmount?: number;
+    saleTaxType?: 'NONE' | 'GST' | 'IGST';
+    saleTaxPercent?: number;
+    saleDiscountAmount?: number;
   };
   inventory: {
     quantity: number;

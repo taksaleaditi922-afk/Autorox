@@ -6,6 +6,12 @@ const pricingSchema = new mongoose.Schema(
     sellingPrice: { type: Number, default: 0, min: 0 },
     discount: { type: Number, default: 0, min: 0 },
     tax: { type: Number, default: 18, min: 0 },
+    purchaseTaxType: { type: String, enum: ['NONE', 'GST', 'IGST'] },
+    purchaseTaxPercent: { type: Number, min: 0, max: 100 },
+    purchaseDiscountAmount: { type: Number, min: 0 },
+    saleTaxType: { type: String, enum: ['NONE', 'GST', 'IGST'] },
+    saleTaxPercent: { type: Number, min: 0, max: 100 },
+    saleDiscountAmount: { type: Number, min: 0 },
   },
   { _id: false }
 );
@@ -41,6 +47,8 @@ const productSchema = new mongoose.Schema(
   {
     productCode: { type: String, required: true, trim: true, unique: true },
     productName: { type: String, required: true, trim: true },
+    brand: { type: String, trim: true },
+    hsn: { type: String, trim: true },
     barcode: { type: String, trim: true, default: undefined },
     vehicleType: { type: String, enum: ['2W', '4W'], default: undefined },
     category: { type: String, trim: true },
@@ -73,6 +81,8 @@ productSchema.methods.toSafeJSON = function () {
     id: this._id,
     productCode: this.productCode,
     productName: this.productName,
+    brand: this.brand,
+    hsn: this.hsn,
     barcode: this.barcode,
     vehicleType: this.vehicleType,
     category: this.category,
