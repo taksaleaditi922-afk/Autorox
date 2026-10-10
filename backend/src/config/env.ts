@@ -4,7 +4,7 @@ dotenv.config();
 
 const env = {
   nodeEnv: process.env.NODE_ENV || 'development',
-  port: parseInt(process.env.PORT, 10) || 5000,
+  port: parseInt(process.env.PORT, 10) || 9014,
   host: process.env.HOST || '0.0.0.0',
   mongoUri: process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/autogarage',
   jwtSecret: process.env.JWT_SECRET || 'supersecret-jwt-key-change-me',

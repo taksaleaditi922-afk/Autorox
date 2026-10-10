@@ -21,6 +21,7 @@ import salesRoutes from './routes/salesRoutes.js';
 import productsRoutes from './routes/productsRoutes.js';
 import stockRoutes from './routes/stockRoutes.js';
 import publicRoutes from './routes/publicRoutes.js';
+import inventoryRoutes from './routes/inventoryRoutes.js';
 
 const app = express();
 
@@ -60,6 +61,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/products', productsRoutes);
+app.use('/api/inventory', inventoryRoutes);
 app.use('/api/stock-transactions', stockRoutes);
 
 // Customer-facing, token authenticated (no login). Mounted last so a public

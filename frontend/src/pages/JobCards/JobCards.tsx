@@ -1,5 +1,4 @@
-import { useEffect, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
@@ -47,7 +46,6 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import { fetchJobCards, fetchJobCardStats, updateJobCard, deleteJobCard, type JobCardStats } from '../../redux/jobSlice';
 import { showToast } from '../../redux/uiSlice';
-import type { RootState, AppDispatch } from '../../store/store';
 import StatusBadge from '../../components/StatusBadge';
 import Loader from '../../components/Loader';
 import JobCardDocumentsMenu from '../../components/jobCard/JobCardDocumentsMenu';
@@ -73,11 +71,14 @@ const initials = (name?: string) =>
 const hasIssuedInvoice = (jc: any) => ['Issued', 'Paid', 'Sent'].includes(jc?.invoice?.status);
 
 export default function JobCards() {
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const { items, pagination, loading } = useSelector((state) => state.jobCards);
+  const { items, pagination, loading, stats } = useAppSelector((state) => state.jobCards);
+  const user = useAppSelector((state) => state.auth.user);
 
-  const [filters, setFilters] = useState({ status: '', priority: '', q: '', type: '' });
+  const [activeTab, setActiveTab] = useState(0);
+  const [search, setSearch] = useState('');
+  const [type, setType] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 

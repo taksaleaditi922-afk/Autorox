@@ -18,6 +18,8 @@ const stockTransactionSchema = new mongoose.Schema(
     stockBefore: { type: Number, required: true },
     stockAfter: { type: Number, required: true },
     notes: { type: String, trim: true },
+    recordedAt: { type: Date, default: Date.now },
+    unitCost: { type: Number, min: 0 },
     recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
@@ -38,9 +40,9 @@ stockTransactionSchema.methods.toSafeJSON = function () {
     stockAfter: this.stockAfter,
     notes: this.notes,
     recordedBy: this.recordedBy,
-    recordedAt: this.recordedAt,
+    recordedAt: this.recordedAt || this.createdAt,
   };
 };
 
-const StockTransaction = mongoose.model('StockTransaction', stockTransactionSchema);
+const StockTransaction = mongoose.model('StockTransaction', stockTransactionSchema) as mongoose.Model<mongoose.InferSchemaType<typeof stockTransactionSchema>, {}, { toSafeJSON(): any }>;
 export default StockTransaction;

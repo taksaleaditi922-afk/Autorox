@@ -18,7 +18,7 @@ export const errorHandler = (err, req, res, next) => {
   // Mongoose validation error
   if (err.name === 'ValidationError') {
     statusCode = 400;
-    errors = Object.values(err.errors).map((e) => ({
+    errors = Object.values(err.errors).map((e: any) => ({
       field: e.path,
       message: e.message,
     }));
@@ -57,6 +57,7 @@ export const errorHandler = (err, req, res, next) => {
     error: message,
   } as Record<string, unknown>;
   if (errors) response.errors = errors;
+  if (err.isOperational && typeof err.code === 'string') response.code = err.code;
   if (env.nodeEnv === 'development' && typeof err.stack === 'string') {
     response.stack = err.stack;
   }

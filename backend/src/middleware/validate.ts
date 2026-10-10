@@ -13,9 +13,9 @@ export const validate = (req, res, next) => {
     return next();
   }
   const details = errors.array().map((e) => ({
-    field: e.param || e.path,
+    field: e.type === 'field' ? e.path : undefined,
     message: e.msg,
-    location: e.location,
+    location: e.type === 'field' ? e.location : undefined,
   }));
   const first = details[0] ? details[0].message : 'Validation failed';
   return next(new ApiError(422, first, true, details));

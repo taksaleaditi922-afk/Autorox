@@ -54,8 +54,8 @@ export default function Dashboard() {
   if (error) return <Typography color="error">{error}</Typography>;
   if (!data) return null;
 
-  const statusData = Object.entries(data.statusDistribution || {}).map(([name, value]) => ({ name, value }));
-  const serviceData = Object.entries(data.serviceTypeDistribution || {}).map(([name, value]) => ({ name, value }));
+  const statusData = Object.entries(data.statusDistribution || {}).map(([name, value]) => ({ name, value: Number(value) }));
+  const serviceData = Object.entries(data.serviceTypeDistribution || {}).map(([name, value]) => ({ name, value: Number(value) }));
   const trendData = (data.trend || []).map((t) => ({ date: t.date.slice(5), count: t.count }));
 
   return (
@@ -67,7 +67,7 @@ export default function Dashboard() {
         </Box>
         <TextField
           select size="small" value={range}
-          onChange={(e) => setRange(e.target.value)}
+          onChange={(e) => setRange(Number(e.target.value))}
           label={t('dashboard.dateRange')} sx={{ minWidth: 150 }}
         >
           <MenuItem value={7}>{t('dashboard.last7')}</MenuItem>

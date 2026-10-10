@@ -12,10 +12,12 @@ export default function Reports() {
   const [rows, setRows] = useState([]);
   const [perf, setPerf] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('');
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       const [reportRes, perfRes] = await Promise.all([
         api.get('/reports/jobcards', { params: status ? { status } : {} }),
@@ -24,7 +26,7 @@ export default function Reports() {
       setRows(reportRes.data.data || []);
       setPerf(perfRes.data.data || []);
     } catch (err) {
-      console.error(err);
+      setError(err?.response?.data?.error || 'Unable to load data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -45,7 +47,7 @@ export default function Reports() {
       link.click();
       link.remove();
     } catch (err) {
-      console.error(err);
+      setError(err?.response?.data?.error || 'Unable to load data. Please try again.');
     }
   };
 
@@ -53,6 +55,7 @@ export default function Reports() {
 
   return (
     <Box>
+      {error && <Typography color="error" sx={{ mb: 2 }}>{error}</Typography>}
       <Typography variant="h5" fontWeight={700} mb={3}>Reports &amp; Analytics</Typography>
 
       <Box sx={{ display: 'flex', gap: 2, mb: 3, alignItems: 'center', flexWrap: 'wrap' }}>

@@ -12,6 +12,7 @@ import { formatDate } from '../../utils/format';
 export default function Customers() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -19,12 +20,13 @@ export default function Customers() {
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await api.get('/customers', { params: { q, page: page + 1, limit: rowsPerPage } });
       setData(res.data.data);
       setTotal(res.data.pagination.total);
     } catch (err) {
-      console.error(err);
+      setError(err?.response?.data?.error || 'Unable to load data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -36,6 +38,7 @@ export default function Customers() {
 
   return (
     <Box>
+      {error && <Typography color="error" sx={{ mb: 2 }}>{error}</Typography>}
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" fontWeight={700}>Customers</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>Manage your customer directory</Typography>

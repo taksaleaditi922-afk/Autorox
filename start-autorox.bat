@@ -3,16 +3,19 @@ setlocal
 cd /d "%~dp0"
 
 echo Checking MongoDB...
-sc query MongoDB | find "RUNNING" >nul
+call npm --prefix backend run db:start
 if errorlevel 1 (
-  echo MongoDB is not running. Start the MongoDB service first, then run this file again.
+  echo MongoDB could not start. Run npm --prefix backend run db:setup first.
   pause
   exit /b 1
 )
-timeout /t 3 /nobreak >nul
 
-echo Starting AutoGarage backend...
-start "AutoGarage Backend" /d "%~dp0backend" cmd /k "npm run dev"
+powershell -NoProfile -Command "try { $response = Invoke-WebRequest -UseBasicParsing http://127.0.0.1:9014/api/health -TimeoutSec 2; if ($response.StatusCode -eq 200 -and $response.Content -match 'AutoGarage API is running') { exit 0 } else { exit 1 } } catch { exit 1 }" >nul 2>&1
+if errorlevel 1 (
+  start "AutoGarage Backend" /d "%~dp0backend" cmd /k "npm run dev"
+) else (
+  echo AutoGarage backend is already running on port 9014; reusing it.
+)
 
 echo Starting AutoGarage frontend...
 start "AutoGarage Frontend" /d "%~dp0frontend" cmd /k "npm run dev -- --host 0.0.0.0"

@@ -12,15 +12,17 @@ import { formatDate } from '../../utils/format';
 export default function Vehicles() {
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [q, setQ] = useState('');
 
   const load = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await api.get('/vehicles', { params: { q, limit: 100 } });
       setData(res.data.data);
     } catch (err) {
-      console.error(err);
+      setError(err?.response?.data?.error || 'Unable to load data. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -32,6 +34,7 @@ export default function Vehicles() {
 
   return (
     <Box>
+      {error && <Typography color="error" sx={{ mb: 2 }}>{error}</Typography>}
       <Box sx={{ mb: 3 }}>
         <Typography variant="h5" fontWeight={700}>Vehicle Registry</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>Browse all registered vehicles</Typography>

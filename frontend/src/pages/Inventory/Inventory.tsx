@@ -7,7 +7,7 @@ import {
   Box, Card, CardContent, Typography, TextField, MenuItem, Button, IconButton,
   Tabs, Tab, Table, TableHead, TableRow, TableBody, TableCell, TableContainer,
   TablePagination, Chip, Tooltip, Menu, MenuItem as MuiMenuItem, Divider,
-  InputAdornment, Grid, Dialog, DialogTitle, DialogContent, DialogActions,
+  InputAdornment, Grid, Dialog, DialogTitle, DialogContent, DialogActions, Alert,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -38,6 +38,7 @@ import {
   fetchIssuedRecordsThunk,
   fetchPurchaseReturnsThunk,
   fetchInventoryItemThunk,
+  fetchMovementHistoryThunk,
   updateStockThunk,
   recordStockMovementThunk,
   resetCurrentItem,
@@ -104,8 +105,6 @@ export default function Inventory(props: InventoryProps) {
 
   const [tab, setTab] = useState<InventoryTabId>('stock');
   const [filters, setFilters] = useState<InventoryFilters>(getDefaultFilters);
-  const [debouncedQuery, setDebouncedQuery] = useState(filters.q);
-  const [debouncedPage, setDebouncedPage] = useState(filters.page);
 
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
@@ -128,6 +127,8 @@ export default function Inventory(props: InventoryProps) {
   const [savingEdit, setSavingEdit] = useState(false);
   const [savingMovement, setSavingMovement] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [recordPage, setRecordPage] = useState(0);
+  const [recordLimit, setRecordLimit] = useState(20);
 
   // Keep page sync'd with filter changes that reset it.
   const pageFromFilter = filters.page;
@@ -136,10 +137,9 @@ export default function Inventory(props: InventoryProps) {
   // Debounce search so each keystroke doesn't fire a request.
   const searchDebounced = useDebounce(filters.q, 300);
 
-  // Refresh data when tab changes.
   useEffect(() => {
-    refreshTabData(tab);
-  }, [tab]);
+    setFilters(f => f.page === 1 ? f : { ...f, page: 1 });
+  }, [searchDebounced, filters.category, filters.brand, filters.location, filters.workshopId, filters.stockStatus, filters.ageing, filters.minPrice, filters.maxPrice, filters.minQty, filters.maxQty]);
 
   // Refresh list when filters (including debounced query, page, limit, sort) change.
   useEffect(() => {
@@ -148,13 +148,13 @@ export default function Inventory(props: InventoryProps) {
       fetchInventoryList({
         ...filters,
         q: searchDebounced,
-        page: debouncedPage,
+        page: filters.page,
         limit: rowsPerPage,
         sortField: sortField ?? undefined,
         sortOrder,
       })
     );
-  }, [tab, dispatch, searchDebounced, debouncedPage, rowsPerPage, filters.category, filters.brand,
+  }, [tab, dispatch, searchDebounced, filters.page, rowsPerPage, filters.category, filters.brand,
        filters.location, filters.workshopId, filters.stockStatus, filters.ageing,
        filters.minPrice, filters.maxPrice, filters.minQty, filters.maxQty, sortField, sortOrder]);
 
@@ -175,11 +175,11 @@ export default function Inventory(props: InventoryProps) {
 
   // Orders / inward / issued / returns load once per their tab.
   useEffect(() => {
-    if (tab === 'order') dispatch(fetchPurchaseOrdersThunk());
-    if (tab === 'inward') dispatch(fetchInwardRecordsThunk());
-    if (tab === 'issued') dispatch(fetchIssuedRecordsThunk());
-    if (tab === 'purchase-return') dispatch(fetchPurchaseReturnsThunk());
-  }, [tab, dispatch]);
+    if (tab === 'order') dispatch(fetchPurchaseOrdersThunk({ page: recordPage + 1, limit: recordLimit }));
+    if (tab === 'inward') dispatch(fetchInwardRecordsThunk({ page: recordPage + 1, limit: recordLimit }));
+    if (tab === 'issued') dispatch(fetchIssuedRecordsThunk({ page: recordPage + 1, limit: recordLimit }));
+    if (tab === 'purchase-return') dispatch(fetchPurchaseReturnsThunk({ page: recordPage + 1, limit: recordLimit }));
+  }, [tab, dispatch, recordPage, recordLimit]);
 
   const refreshTabData = useCallback((newTab: typeof tab) => {
     if (newTab === 'stock') {
@@ -189,17 +189,18 @@ export default function Inventory(props: InventoryProps) {
     } else if (newTab === 'stock-alert') {
       dispatch(fetchStockAlertsThunk());
     } else if (newTab === 'order') {
-      dispatch(fetchPurchaseOrdersThunk());
+      dispatch(fetchPurchaseOrdersThunk({ page: recordPage + 1, limit: recordLimit }));
     } else if (newTab === 'inward') {
-      dispatch(fetchInwardRecordsThunk());
+      dispatch(fetchInwardRecordsThunk({ page: recordPage + 1, limit: recordLimit }));
     } else if (newTab === 'issued') {
-      dispatch(fetchIssuedRecordsThunk());
+      dispatch(fetchIssuedRecordsThunk({ page: recordPage + 1, limit: recordLimit }));
     } else if (newTab === 'purchase-return') {
-      dispatch(fetchPurchaseReturnsThunk());
+      dispatch(fetchPurchaseReturnsThunk({ page: recordPage + 1, limit: recordLimit }));
     }
-  }, [dispatch, filters, searchDebounced, rowsPerPage]);
+  }, [dispatch, filters, searchDebounced, rowsPerPage, recordPage, recordLimit]);
 
   const handleTabChange = (_: React.SyntheticEvent, newValue: number) => {
+    setRecordPage(0);
     setTab(TAB_IDS[newValue]);
   };
 
@@ -294,6 +295,7 @@ export default function Inventory(props: InventoryProps) {
     setSelectedItem(item);
     setDetailOpen(true);
     dispatch(fetchInventoryItemThunk(item.id));
+    dispatch(fetchMovementHistoryThunk(item.id));
   };
 
   const closeDetail = () => {
@@ -329,6 +331,9 @@ export default function Inventory(props: InventoryProps) {
         })
       ).unwrap();
       setEditModalOpen(false);
+      refreshTabData('stock');
+    } catch {
+      // The rejected thunk exposes the server error below; keep the dialog open.
     } finally {
       setSavingEdit(false);
     }
@@ -367,6 +372,12 @@ export default function Inventory(props: InventoryProps) {
           limit: rowsPerPage,
         })
       );
+      dispatch(fetchInventoryStatsThunk());
+      dispatch(fetchInventoryInsightsThunk());
+      dispatch(fetchMovementHistoryThunk(selectedItem.id));
+      dispatch(fetchInventoryItemThunk(selectedItem.id));
+    } catch {
+      // The rejected thunk exposes the server error below; keep the dialog open.
     } finally {
       setSavingMovement(false);
     }
@@ -374,69 +385,12 @@ export default function Inventory(props: InventoryProps) {
 
   const columns = useMemo(() => COLUMNS, []);
 
-  const pagination = state.items.length ? state.pagination : { page: 1, limit: rowsPerPage, total: state.items.length, totalPages: 1 };
-
-  // Derive filtered + sorted items for the table row renderer.
-  const tableItems = useMemo(() => {
-    const list = state.items;
-    const q = searchDebounced.trim().toLowerCase();
-    let filtered = list.filter((item) => {
-      if (!q) return true;
-      const haystack =
-        `${item.productCode} ${item.productName} ${item.brand || ''} ${item.category || ''} ${item.barcode || ''} ${item.inventory?.location || ''}`.toLowerCase();
-      return haystack.includes(q);
-    });
-    // Apply quick status filters.
-    if (filters.stockStatus === 'in-stock') filtered = filtered.filter((i) => computeStockStatus(i) === 'In Stock');
-    else if (filters.stockStatus === 'out-of-stock') filtered = filtered.filter((i) => computeStockStatus(i) === 'Out of Stock');
-    else if (filters.stockStatus === 'reorder-level') filtered = filtered.filter((i) => computeStockStatus(i) === 'Re-order Level');
-    // Apply ageing filter.
-    if (filters.ageing === 'fresh') filtered = filtered.filter((i) => getAgeingBucket(computeAgeingDays(i)).key === 'fresh');
-    else if (filters.ageing === 'ageing') filtered = filtered.filter((i) => getAgeingBucket(computeAgeingDays(i)).key === 'ageing');
-    else if (filters.ageing === 'dead') filtered = filtered.filter((i) => getAgeingBucket(computeAgeingDays(i)).key === 'dead');
-    // Apply numeric filters (client-side fallback).
-    if (filters.minPrice) {
-      const min = Number(filters.minPrice);
-      if (Number.isFinite(min)) filtered = filtered.filter((i) => (i.pricing?.costPrice ?? 0) >= min);
-    }
-    if (filters.maxPrice) {
-      const max = Number(filters.maxPrice);
-      if (Number.isFinite(max)) filtered = filtered.filter((i) => (i.pricing?.costPrice ?? 0) <= max);
-    }
-    if (filters.minQty) {
-      const min = Number(filters.minQty);
-      if (Number.isFinite(min)) filtered = filtered.filter((i) => (i.inventory?.quantity ?? 0) >= min);
-    }
-    if (filters.maxQty) {
-      const max = Number(filters.maxQty);
-      if (Number.isFinite(max)) filtered = filtered.filter((i) => (i.inventory?.quantity ?? 0) <= max);
-    }
-    // Sort.
-    if (sortField) {
-      filtered = [...filtered].sort((a, b) => {
-        const av = getCellValue(a, sortField);
-        const bv = getCellValue(b, sortField);
-        if (av == null && bv == null) return 0;
-        if (av == null) return 1;
-        if (bv == null) return -1;
-        if (typeof av === 'number' && typeof bv === 'number') {
-          return sortOrder === 'asc' ? av - bv : bv - av;
-        }
-        const astr = String(av).toLowerCase();
-        const bstr = String(bv).toLowerCase();
-        return sortOrder === 'asc' ? astr.localeCompare(bstr) : bstr.localeCompare(astr);
-      });
-    }
-    return filtered;
-  }, [state.items, searchDebounced, filters.stockStatus, filters.ageing, filters.minPrice, filters.maxPrice, filters.minQty, filters.maxQty, sortField, sortOrder]);
-
-  const paginatedItems = useMemo(() => {
-    const start = (filters.page - 1) * rowsPerPage;
-    return tableItems.slice(start, start + rowsPerPage);
-  }, [tableItems, filters.page, rowsPerPage]);
-
-  const visibleCount = Math.min(paginatedItems.length, rowsPerPage);
-  const totalDisplayed = Math.min(pagination.total, tableItems.length);
+  // Filtering, sorting and pagination are applied once, on the backend.
+  const pagination = state.pagination;
+  const tableItems = state.items;
+  const paginatedItems = state.items;
+  const visibleCount = state.items.length;
+  const totalDisplayed = pagination.total;
 
   if (tab === 'stock' && state.loading && !state.items.length) {
     return <Loader label={t('common.loadingDashboard')} />;
@@ -481,6 +435,7 @@ export default function Inventory(props: InventoryProps) {
         </Tabs>
       </Card>
 
+      {(state.error || state.alertsError) && <Alert severity="error" sx={{ mb: 2 }}>{state.error || state.alertsError}</Alert>}
       {/* Tab content */}
       {tab === 'stock' && <StockTab
         t={t}
@@ -528,6 +483,11 @@ export default function Inventory(props: InventoryProps) {
         t={t}
         titleKey="inventory.tab.order"
         items={state.orders}
+          pagination={state.recordPagination.orders}
+          page={recordPage}
+          limit={recordLimit}
+          onPageChange={setRecordPage}
+          onLimitChange={(limit) => { setRecordLimit(limit); setRecordPage(0); }}
         loading={state.ordersLoading}
         emptyTitle={t('inventory.empty.orders')}
         rowLabel={(item) => item.orderNumber}
@@ -546,6 +506,11 @@ export default function Inventory(props: InventoryProps) {
         t={t}
         titleKey="inventory.tab.inward"
         items={state.inwardRecords}
+          pagination={state.recordPagination.inwardRecords}
+          page={recordPage}
+          limit={recordLimit}
+          onPageChange={setRecordPage}
+          onLimitChange={(limit) => { setRecordLimit(limit); setRecordPage(0); }}
         loading={state.inwardLoading}
         emptyTitle={t('inventory.empty.inward')}
         rowLabel={(item) => item.inwardNumber}
@@ -564,6 +529,11 @@ export default function Inventory(props: InventoryProps) {
         t={t}
         titleKey="inventory.tab.issued"
         items={state.issuedRecords}
+          pagination={state.recordPagination.issuedRecords}
+          page={recordPage}
+          limit={recordLimit}
+          onPageChange={setRecordPage}
+          onLimitChange={(limit) => { setRecordLimit(limit); setRecordPage(0); }}
         loading={state.issuedLoading}
         emptyTitle={t('inventory.empty.issued')}
         rowLabel={(item) => item.issueNumber}
@@ -582,6 +552,11 @@ export default function Inventory(props: InventoryProps) {
         t={t}
         titleKey="inventory.tab.purchaseReturn"
         items={state.purchaseReturns}
+          pagination={state.recordPagination.purchaseReturns}
+          page={recordPage}
+          limit={recordLimit}
+          onPageChange={setRecordPage}
+          onLimitChange={(limit) => { setRecordLimit(limit); setRecordPage(0); }}
         loading={state.returnsLoading}
         emptyTitle={t('inventory.empty.returns')}
         rowLabel={(item) => item.returnNumber}
@@ -606,7 +581,7 @@ export default function Inventory(props: InventoryProps) {
         movementHistory={state.movementHistory}
         loading={state.movementLoading}
         refreshMovementHistory={async () => {
-          // Real backend would call GET /api/stock-transactions/:productId here.
+          if (selectedItem) await dispatch(fetchMovementHistoryThunk(selectedItem.id));
         }}
       />
 
@@ -914,9 +889,9 @@ function StockTab({
 
             <TextField select size="small" label={t('inventory.filter.status')} value={filters.stockStatus || 'all'} onChange={(e) => setFilters((f) => ({ ...f, stockStatus: e.target.value, inStock: undefined, outOfStock: undefined, reorderLevel: undefined }))} sx={{ minWidth: 150 }}>
               <MenuItem value="all">{t('inventory.filter.allStatuses')}</MenuItem>
-              <MenuItem value="fresh">{t('inventory.filter.fresh')}</MenuItem>
-              <MenuItem value="ageing">{t('inventory.filter.ageingRange')}</MenuItem>
-              <MenuItem value="dead">{t('inventory.filter.dead')}</MenuItem>
+              <MenuItem value="in-stock">In Stock</MenuItem>
+              <MenuItem value="reorder-level">Re-order Level</MenuItem>
+              <MenuItem value="out-of-stock">Out of Stock</MenuItem>
             </TextField>
 
             <TextField select size="small" label={t('inventory.filter.ageing')} value={filters.ageing || 'all'} onChange={(e) => setFilters((f) => ({ ...f, ageing: e.target.value }))} sx={{ minWidth: 160 }}>
@@ -958,7 +933,7 @@ function StockTab({
                     key={col.field}
                     sortDirection={sortField === col.field ? (sortOrder === 'asc' ? 'asc' : 'desc') : false}
                     sx={{ cursor: col.sortable ? 'pointer' : 'default', whiteSpace: 'nowrap' }}
-                    align={col.numeric ? 'right' : 'left'}
+                    align={('numeric' in col && col.numeric) ? 'right' : 'left'}
                     onClick={col.sortable ? () => handleSort(col.field, col.label) : undefined}
                     aria-label={col.label}
                   >
@@ -1068,7 +1043,7 @@ function StockTab({
         />
         <Box sx={{ px: 2, py: 1.5, borderTop: '1px solid', borderColor: 'divider' }}>
           <Typography variant="body2" color="text.secondary">
-            {t('inventory.common.showing', { from: (filters.page - 1) * rowsPerPage + 1, to: Math.min(filters.page * rowsPerPage, tableItems.length), total: tableItems.length })}
+            {t('inventory.common.showing', { from: pagination.total ? (filters.page - 1) * rowsPerPage + 1 : 0, to: Math.min(filters.page * rowsPerPage, pagination.total), total: pagination.total })}
           </Typography>
         </Box>
       </Card>
@@ -1192,6 +1167,7 @@ function StockAlertTab({
 // ---------------------------------------------------------------------------
 
 function ListTab<T extends Record<string, any>>({
+  pagination, page, limit, onPageChange, onLimitChange,
   t,
   titleKey,
   items,
@@ -1200,6 +1176,11 @@ function ListTab<T extends Record<string, any>>({
   rowLabel,
   columns,
 }: {
+  pagination: { total: number };
+  page: number;
+  limit: number;
+  onPageChange: (page: number) => void;
+  onLimitChange: (limit: number) => void;
   t: ReturnType<typeof useT>;
   titleKey: string;
   items: T[];
@@ -1246,6 +1227,7 @@ function ListTab<T extends Record<string, any>>({
           </TableContainer>
         </Card>
       )}
+      <TablePagination component="div" count={pagination.total} page={page} rowsPerPage={limit} rowsPerPageOptions={[10, 20, 50, 100]} onPageChange={(_, next) => onPageChange(next)} onRowsPerPageChange={event => onLimitChange(Number(event.target.value))} />
     </Box>
   );
 }

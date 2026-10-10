@@ -6,7 +6,10 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node dist/server.js",
+    "predev": "node scripts/ensure-mongo.mjs",
     "dev": "tsx watch src/server.ts",
+    "db:setup": "node scripts/ensure-mongo.mjs --install",
+    "db:start": "node scripts/ensure-mongo.mjs",
     "build": "tsc -p tsconfig.json",
     "seed": "tsx src/seed/seed.ts",
     "test": "vitest run"

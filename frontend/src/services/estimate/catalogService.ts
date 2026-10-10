@@ -1,10 +1,8 @@
 // ---------------------------------------------------------------------------
 // Catalog service — services, packages, parts and labour.
 //
-// Tries the server first (/api/estimates/catalog/*) and falls back to the
-// bundled catalog so the estimate builder works before the catalog is
-// populated. Filtering/sorting/pagination behaviour is identical either way,
-// so swapping in the real endpoints changes nothing in the UI.
+// Catalog searches and business configuration come from the backend.
+// Bundled definitions are used only for local suggestions and pure helpers.
 // ---------------------------------------------------------------------------
 
 import api from '../api';
@@ -73,7 +71,7 @@ function forVehicleType(types: VehicleType[] | undefined, vehicleType?: VehicleT
 }
 
 // ---------------------------------------------------------------------------
-// Clientside implementations (also used as the fallback)
+// Pure catalog helpers
 // ---------------------------------------------------------------------------
 
 export function filterServices(filters: CatalogFilters, items = SERVICE_CATALOG): CatalogPage<CatalogService> {
@@ -127,17 +125,16 @@ export function catalogFacets() {
 }
 
 // ---------------------------------------------------------------------------
-// Server-first API
+// Backend API
 // ---------------------------------------------------------------------------
 
 interface Searchable {
   (filters: CatalogFilters, signal?: AbortSignal): Promise<CatalogPage<any>>;
 }
 
-async function searchWithFallback<T>(
+async function searchCatalog<T>(
   path: string,
   filters: CatalogFilters,
-  fallback: () => CatalogPage<T>,
   signal?: AbortSignal
 ): Promise<CatalogPage<T>> {
   try {
@@ -154,24 +151,24 @@ async function searchWithFallback<T>(
         },
       };
     }
-    throw new Error('empty');
+    throw new Error('The catalog API returned an invalid response');
   } catch (err: any) {
     if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') throw err;
-    return fallback();
+    throw err;
   }
 }
 
 export const searchServices: Searchable = (filters, signal) =>
-  searchWithFallback('/estimates/catalog/services', filters, () => filterServices(filters), signal);
+  searchCatalog('/estimates/catalog/services', filters, signal);
 
 export const searchPackages: Searchable = (filters, signal) =>
-  searchWithFallback('/estimates/catalog/packages', filters, () => filterPackages(filters), signal);
+  searchCatalog('/estimates/catalog/packages', filters, signal);
 
 export const searchParts: Searchable = (filters, signal) =>
-  searchWithFallback('/estimates/catalog/parts', filters, () => filterParts(filters), signal);
+  searchCatalog('/estimates/catalog/parts', filters, signal);
 
 export const searchLabour: Searchable = (filters, signal) =>
-  searchWithFallback('/estimates/catalog/labour', filters, () => filterLabour(filters), signal);
+  searchCatalog('/estimates/catalog/labour', filters, signal);
 
 /** Suggested services for an inspection point, e.g. "Brakes" -> brake services. */
 export function suggestServicesFor(inspectionItemName: string, limit = 5): CatalogService[] {
@@ -222,8 +219,8 @@ async function requestBusinessConfig(): Promise<EstimateBusinessConfig> {
       company: { ...DEFAULT_BUSINESS_CONFIG.company, ...(data.company || {}) },
       terms: data.terms?.length ? data.terms : DEFAULT_BUSINESS_CONFIG.terms,
     };
-  } catch {
-    return DEFAULT_BUSINESS_CONFIG;
+  } catch (error) {
+    throw error;
   }
 }
 

@@ -34,27 +34,26 @@ A production-ready **MERN stack** (MongoDB, Express, React, Node.js) admin dashb
 
 ```
 AutoGarage/
-├── backend/                  # Express + MongoDB API
-│   └── src/
-│       ├── config/          # env, db
-│       ├── controllers/     # route handlers
-│       ├── middleware/      # auth, validate, errorHandler, upload
-│       ├── models/          # Mongoose schemas
-│       ├── routes/          # Express routers
-│       ├── seed/            # demo data seeder
-│       ├── app.js / server.js
-├── frontend/                # React (Vite) admin dashboard
-│   └── src/
-│       ├── components/      # Layout, badges, loader, toast
-│       ├── pages/           # Login, Dashboard, JobCards, JobCardForm,
-│       │                    # JobCardDetails, Estimates, Customers,
-│       │                    # Vehicles, Advisors, Reports, Settings
-│       ├── redux/           # auth, jobCards, ui slices
-│       ├── services/        # axios instance + interceptors
-│       ├── styles/  utils/  # theme, globals, formatters, constants
-│       ├── App.jsx / main.jsx
-└── package.json             # root helper scripts
+  backend/src/
+    routes/         # Page-specific URLs, methods and middleware
+    controllers/    # HTTP input, status codes, headers and responses
+    services/       # Business rules, persistence and shared providers
+    models/         # Mongoose schemas
+    middleware/     # Authentication, validation, errors and uploads
+    config/         # Environment and database configuration
+    seed/           # Development data
+    app.ts / server.ts
+  frontend/src/
+    pages/          # React screens and workflows
+    components/     # Shared UI
+    redux/          # State and API thunks
+    services/       # API client and adapters
+    store/          # Redux store and typed hooks
 ```
+
+See [the page-to-API map](backend/src/routes/README.md) for endpoint coverage and the route/controller/service convention.
+
+Stock updates use MongoDB transactions. Configure a replica set or MongoDB Atlas as described in that guide before using stock edits or movements.
 
 ---
 

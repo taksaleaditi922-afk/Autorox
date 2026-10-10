@@ -51,5 +51,5 @@ customerSchema.methods.toSafeJSON = function () {
   };
 };
 
-const Customer = mongoose.model('Customer', customerSchema);
+const Customer = mongoose.model('Customer', customerSchema) as mongoose.Model<mongoose.InferSchemaType<typeof customerSchema>, {}, { toSafeJSON(): any }>;
 export default Customer;

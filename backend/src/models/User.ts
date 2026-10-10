@@ -40,5 +40,5 @@ userSchema.methods.toSafeJSON = function () {
   };
 };
 
-const User = mongoose.model('User', userSchema);
+const User = mongoose.model('User', userSchema) as mongoose.Model<mongoose.InferSchemaType<typeof userSchema>, {}, { matchPassword(password: string): Promise<boolean>; toSafeJSON(): any }>;
 export default User;

@@ -7,10 +7,10 @@ import env from '../config/env.js';
 export const signTokens = (user) => {
   const payload = { sub: user._id.toString(), role: user.role };
   const accessToken = jwt.sign(payload, env.jwtSecret, {
-    expiresIn: env.jwtAccessExpires,
+    expiresIn: env.jwtAccessExpires as jwt.SignOptions['expiresIn'],
   });
   const refreshToken = jwt.sign({ sub: user._id.toString(), type: 'refresh' }, env.jwtRefreshSecret, {
-    expiresIn: env.jwtRefreshExpires,
+    expiresIn: env.jwtRefreshExpires as jwt.SignOptions['expiresIn'],
   });
   return { accessToken, refreshToken };
 };
@@ -41,9 +41,9 @@ export const protect = asyncHandler(async (req, res, next) => {
 
 /** Verify a refresh token string, returns payload */
 export const verifyRefreshToken = (token) =>
-  new Promise((resolve, reject) => {
+  new Promise<jwt.JwtPayload>((resolve, reject) => {
     jwt.verify(token, env.jwtRefreshSecret, (err, decoded) => {
-      if (err || decoded.type !== 'refresh') {
+      if (err || !decoded || typeof decoded === 'string' || decoded.type !== 'refresh') {
         reject(new ApiError(401, 'Invalid refresh token'));
       } else {
         resolve(decoded);

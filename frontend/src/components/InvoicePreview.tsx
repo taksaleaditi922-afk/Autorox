@@ -3,7 +3,7 @@ import StatusBadge from './StatusBadge';
 import { formatDateTime, formatCurrency } from '../utils/format';
 import { TAX_RATE } from '../constants';
 
-export default function InvoicePreview({ sale, showDiscountDetails = true, onPrint }) {
+export default function InvoicePreview({ sale, showDiscountDetails = true, onPrint }: { sale: any; showDiscountDetails?: boolean; onPrint?: () => void }) {
   const { subtotal, discountAmount, afterDiscount, taxAmount, grandTotal } = sale.billing || {};
   const { amountPaid, balance, status, method, transactionId, paidDate, paymentHistory } = sale.payment || {};
   return (

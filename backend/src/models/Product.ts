@@ -16,6 +16,9 @@ const inventorySchema = new mongoose.Schema(
     minimumLevel: { type: Number, default: 0, min: 0 },
     unit: { type: String, trim: true, default: 'Units' },
     location: { type: String, trim: true },
+    rackNumber: String,
+    workshopId: String,
+    workshopName: String,
   },
   { _id: false }
 );
@@ -42,6 +45,10 @@ const productSchema = new mongoose.Schema(
     productCode: { type: String, required: true, trim: true, unique: true },
     productName: { type: String, required: true, trim: true },
     category: { type: String, trim: true },
+    brand: String,
+    barcode: String,
+    lastMovementDate: Date,
+    lastPurchaseDate: Date,
     description: { type: String, trim: true },
     pricing: { type: pricingSchema, default: () => ({}) },
     inventory: { type: inventorySchema, default: () => ({}) },
@@ -63,6 +70,10 @@ productSchema.methods.toSafeJSON = function () {
     productCode: this.productCode,
     productName: this.productName,
     category: this.category,
+    brand: this.brand,
+    barcode: this.barcode,
+    lastMovementDate: this.lastMovementDate,
+    lastPurchaseDate: this.lastPurchaseDate,
     description: this.description,
     pricing: this.pricing,
     inventory: this.inventory,
@@ -74,5 +85,5 @@ productSchema.methods.toSafeJSON = function () {
   };
 };
 
-const Product = mongoose.model('Product', productSchema);
+const Product = mongoose.model('Product', productSchema) as mongoose.Model<mongoose.InferSchemaType<typeof productSchema>, {}, { toSafeJSON(): any }>;
 export default Product;

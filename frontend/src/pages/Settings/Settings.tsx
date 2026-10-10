@@ -13,13 +13,14 @@ export default function Settings() {
   const t = useT();
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState(0);
 
   useEffect(() => {
     api.get('/settings')
       .then((res) => setSettings(res.data.data))
-      .catch(console.error)
+      .catch(err => setError(err?.response?.data?.error || 'Unable to load settings. Please reload to try again.'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -36,6 +37,7 @@ export default function Settings() {
   };
 
   if (loading) return <Loader label={t('common.loadingSettings')} />;
+  if (error) return <Typography color="error">{error}</Typography>;
   if (!settings) return null;
 
   const setCompany = (field, value) => setSettings((s) => ({ ...s, company: { ...s.company, [field]: value } }));

@@ -33,6 +33,7 @@ import { SALE_STATUSES, SALE_STATUS_COLORS, PAYMENT_METHODS, TAX_RATE } from '..
 const STATUS_OPTIONS = [...SALE_STATUSES];
 
 const EMPTY_BILL = {
+  customerId: '',
   customer: { name: '', email: '', phone: '', address: '' },
   items: [],
   discount: { type: 'Fixed', value: 0, reason: '' },
@@ -468,7 +469,8 @@ export default function SellProducts() {
 
       <Menu
         open={!!contextMenu} onClose={() => setContextMenu(null)}
-        anchorEl={contextMenu ? { x: contextMenu.x, y: contextMenu.y } : null}
+        anchorReference="anchorPosition"
+        anchorPosition={contextMenu ? { left: contextMenu.x, top: contextMenu.y } : undefined}
         anchorOrigin={{ horizontal: 'left', vertical: 'bottom' }}
         transformOrigin={{ horizontal: 'left', vertical: 'top' }}
       >
@@ -493,7 +495,7 @@ export default function SellProducts() {
             <DialogTitle>Create Bill — Step 1: Select Customer</DialogTitle>
             <DialogContent dividers>
               <TextField select fullWidth label="Customer" value={form.customerId || ''}
-                onChange={(e) => setField('customerId', e.target.value)} margin="normal">
+                onChange={(e) => handleCustomerSelect(e.target.value)} margin="normal">
                 {availableCustomers?.map((c) => <MenuItem key={c._id} value={c._id}>{c.name}</MenuItem>)}
               </TextField>
               <Typography variant="subtitle1" fontWeight={600} mt={2}>Or enter customer details</Typography>

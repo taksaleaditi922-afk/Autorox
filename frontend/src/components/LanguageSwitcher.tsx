@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { IconButtonProps } from '@mui/material';
 import { IconButton, Menu, MenuItem, Tooltip, Box } from '@mui/material';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import TranslateIcon from '@mui/icons-material/Translate';
@@ -7,7 +8,7 @@ import { LANGUAGES } from '../i18n/languages';
 import { setLanguage } from '../redux/languageSlice';
 import useT from '../i18n/useT';
 
-export default function LanguageSwitcher({ color = 'inherit', iconColor }) {
+export default function LanguageSwitcher({ color = 'inherit', iconColor }: { color?: IconButtonProps['color']; iconColor?: string }) {
   const dispatch = useAppDispatch();
   const t = useT();
   const current = useAppSelector((state) => state.language.lang);

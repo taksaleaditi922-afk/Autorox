@@ -31,5 +31,5 @@ settingsSchema.statics.getSingleton = async function () {
   return doc;
 };
 
-const Settings = mongoose.model('Settings', settingsSchema);
+const Settings = mongoose.model('Settings', settingsSchema) as mongoose.Model<mongoose.InferSchemaType<typeof settingsSchema>> & { getSingleton(): Promise<any> };
 export default Settings;0

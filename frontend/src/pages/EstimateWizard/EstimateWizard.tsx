@@ -8,7 +8,7 @@
 // ---------------------------------------------------------------------------
 
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
+import { useAppDispatch as useDispatch, useAppSelector as useSelector } from '../../store/hooks';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
