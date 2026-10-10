@@ -20,8 +20,9 @@ import settingsRoutes from './routes/settingsRoutes.js';
 import salesRoutes from './routes/salesRoutes.js';
 import productsRoutes from './routes/productsRoutes.js';
 import stockRoutes from './routes/stockRoutes.js';
-import publicRoutes from './routes/publicRoutes.js';
 import inventoryRoutes from './routes/inventoryRoutes.js';
+import partOrderRoutes from './routes/partOrderRoutes.js';
+import publicRoutes from './routes/publicRoutes.js';
 
 const app = express();
 
@@ -63,6 +64,8 @@ app.use('/api/sales', salesRoutes);
 app.use('/api/products', productsRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/stock-transactions', stockRoutes);
+app.use('/api/inventory', inventoryRoutes);
+app.use('/api/part-orders', partOrderRoutes);
 
 // Customer-facing, token authenticated (no login). Mounted last so a public
 // path can never shadow an authenticated API route.

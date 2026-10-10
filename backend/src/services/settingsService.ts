@@ -14,6 +14,7 @@ export const updateSettings = async (payload: any): Promise<any> => {
   if (b.company) settings.company = { ...settings.company, ...b.company };
   if (typeof b.taxRate === 'number') settings.taxRate = b.taxRate;
   if (b.currency) settings.currency = b.currency;
+  if (b.inventory) settings.inventory = { ...settings.inventory, ...b.inventory };
   await settings.save();
   return { success: true, data: settings };
 };

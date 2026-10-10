@@ -12,6 +12,7 @@
     "db:start": "node scripts/ensure-mongo.mjs",
     "build": "tsc -p tsconfig.json",
     "seed": "tsx src/seed/seed.ts",
+    "migrate:inventory": "tsx src/migrations/20261001-inventory-upgrade.ts",
     "test": "vitest run"
   },
   "keywords": [

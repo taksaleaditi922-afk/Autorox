@@ -14,7 +14,7 @@ const hi = {
   'nav.jobCards': 'जॉब कार्ड',
   'nav.newJobCard': 'नया जॉब कार्ड',
   'nav.estimates': 'अनुमान',
-  'nav.sellProducts': 'उत्पाद बेचें',
+  'nav.sellProducts': 'Counter Sale',
   'nav.customers': 'ग्राहक',
   'nav.vehicles': 'वाहन',
   'nav.advisors': 'सलाहकार',

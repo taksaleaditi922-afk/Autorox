@@ -14,7 +14,7 @@ const ar = {
   'nav.jobCards': 'بطاقات العمل',
   'nav.newJobCard': 'بطاقة عمل جديدة',
   'nav.estimates': 'التقديرات',
-  'nav.sellProducts': 'بيع المنتجات',
+  'nav.sellProducts': 'Counter Sale',
   'nav.customers': 'العملاء',
   'nav.vehicles': 'المركبات',
   'nav.advisors': 'المستشارون',

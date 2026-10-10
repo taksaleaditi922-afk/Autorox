@@ -43,7 +43,7 @@ import EditOutlinedIcon from '@mui/icons-material/EditOutlined';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
 import CloseIcon from '@mui/icons-material/Close';
 import CatalogPicker, { type CatalogSelection, type CatalogTab } from '../../../components/estimate/CatalogPicker';
-import AdvanceDialog, { type AdvanceValues } from '../../../components/jobCard/AdvanceDialog';
+import AdvancePaymentModal, { type AdvancePaymentValues } from '../../../components/jobCard/AdvancePaymentModal';
 import LineItemDialog from '../../../components/jobCard/LineItemDialog';
 import {
   DEFAULT_TAX_RATE,
@@ -212,18 +212,17 @@ export default function ServicesPartsStep({ form, errors, set, actions }: JobCar
 
   const clearList = () => set({ lineItems: [] });
 
-  const handleAdvance = async (values: AdvanceValues) => {
+  const handleAdvance = async (values: AdvancePaymentValues) => {
     const amount = Number(values.amount) || 0;
     set({
-      advance: { amount: values.amount, paymentMode: values.paymentMode, reference: values.reference },
-      intake: { ...form.intake, advanceAmount: values.amount, advancePaymentMode: values.paymentMode },
+      advances: [...form.advances, { amount, paymentMode: values.paymentMethod, reference: values.remarks, recordedAt: new Date(values.date).toISOString(), recordedBy: actions?.currentUser || '' }],
     });
     setAdvanceOpen(false);
 
     // Persist against the job card when it already exists on the server.
     if (actions?.persisted) {
       setAdvanceBusy(true);
-      await actions.recordAdvance({ amount, paymentMode: values.paymentMode, reference: values.reference });
+      await actions.recordAdvance({ amount, paymentMode: values.paymentMethod, reference: values.remarks });
       setAdvanceBusy(false);
     }
   };
@@ -569,14 +568,11 @@ export default function ServicesPartsStep({ form, errors, set, actions }: JobCar
         onSave={saveEditor}
       />
 
-      <AdvanceDialog
-        open={advanceOpen}
-        values={{
-          amount: form.advance.amount,
-          paymentMode: form.advance.paymentMode,
-          reference: form.advance.reference,
-        }}
-        total={totals.grandTotal}
+      <AdvancePaymentModal
+        isOpen={advanceOpen}
+        context={actions?.mode || 'job-card'}
+        existingAdvances={form.advances.map((entry, index) => ({ id: String(index), amount: entry.amount, date: entry.recordedAt, paymentMethod: entry.paymentMode, remarks: entry.reference }))}
+        maxAmount={totals.balanceDue}
         busy={advanceBusy}
         onClose={() => setAdvanceOpen(false)}
         onSave={handleAdvance}

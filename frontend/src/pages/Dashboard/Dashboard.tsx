@@ -54,8 +54,8 @@ export default function Dashboard() {
   if (error) return <Typography color="error">{error}</Typography>;
   if (!data) return null;
 
-  const statusData = Object.entries(data.statusDistribution || {}).map(([name, value]) => ({ name, value: Number(value) }));
-  const serviceData = Object.entries(data.serviceTypeDistribution || {}).map(([name, value]) => ({ name, value: Number(value) }));
+  const statusData = Object.entries(data.statusDistribution || {}).map(([name, value]) => ({ name, value: Number(value) || 0 }));
+  const serviceData = Object.entries(data.serviceTypeDistribution || {}).map(([name, value]) => ({ name, value: Number(value) || 0 }));
   const trendData = (data.trend || []).map((t) => ({ date: t.date.slice(5), count: t.count }));
 
   return (

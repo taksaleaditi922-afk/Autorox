@@ -8,7 +8,6 @@
 // ---------------------------------------------------------------------------
 
 import { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useAppDispatch as useDispatch, useAppSelector as useSelector } from '../../store/hooks';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
@@ -54,6 +53,7 @@ import { useDebounce } from '../../utils/useDebounce';
 import EstimateStepper from './EstimateStepper';
 import ErrorBoundary from '../../components/ErrorBoundary';
 import { ConfirmDialog, InlineAlert } from '../../components/estimate/primitives';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 
 const VehicleClientStep = lazy(() => import('./steps/VehicleClientStep'));
 const InspectionStep = lazy(() => import('./steps/InspectionStep'));
@@ -100,13 +100,13 @@ function savedLabel(saveState: string, lastSavedAt: string | null): string {
 export default function EstimateWizard() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  const estimate = useSelector(selectEstimate);
-  const config = useSelector(selectEstimateConfig);
-  const { changeSeq, draftNotice, persistence } = useSelector((state) => state.estimate);
+  const estimate = useAppSelector(selectEstimate);
+  const config = useAppSelector(selectEstimateConfig);
+  const { changeSeq, draftNotice, persistence } = useAppSelector((state) => state.estimate);
 
   const [recoverable, setRecoverable] = useState<ReturnType<typeof draftStorage.loadLocalDraft>>(null);
   const [serverError, setServerError] = useState<string[] | null>(null);

@@ -14,7 +14,7 @@ const kn = {
   'nav.jobCards': 'ಜಾಬ್ ಕಾರ್ಡ್ಗಳು',
   'nav.newJobCard': 'ಹೊಸ ಜಾಬ್ ಕಾರ್ಡ್',
   'nav.estimates': 'ಅಂದಾಜುಗಳು',
-  'nav.sellProducts': 'ಉತ್ಪನ್ನಗಳನ್ನು ಮಾರಾಟ ಮಾಡಿ',
+  'nav.sellProducts': 'Counter Sale',
   'nav.customers': 'ಗ್ರಾಹಕರು',
   'nav.vehicles': 'ವಾಹನಗಳು',
   'nav.advisors': 'ಸಲಹೆಗಾರರು',

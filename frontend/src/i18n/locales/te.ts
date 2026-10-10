@@ -14,7 +14,7 @@ const te = {
   'nav.jobCards': 'జాబ్ కార్డులు',
   'nav.newJobCard': 'కొత్త జాబ్ కార్డ్',
   'nav.estimates': 'అంచనాలు',
-  'nav.sellProducts': 'ఉత్పత్తులు అమ్మండి',
+  'nav.sellProducts': 'Counter Sale',
   'nav.customers': 'వినియోగదారులు',
   'nav.vehicles': 'వాహనాలు',
   'nav.advisors': 'సలహాదారులు',

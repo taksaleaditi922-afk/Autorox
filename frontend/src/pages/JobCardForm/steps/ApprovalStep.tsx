@@ -12,9 +12,18 @@ export default function ApprovalStep({ form, set, actions }: JobCardStepProps) {
   const [link, setLink] = useState('');
   const [notice, setNotice] = useState('');
   const locked = form.approval.status === 'approved';
+  const phoneDigits = form.customer.phone.replace(/\D/g, '');
+  const localPhone = phoneDigits.replace(/^91(?=\d{10}$)/, '');
+  const validPhone = /^[6-9]\d{9}$/.test(localPhone);
+  const internationalPhone = validPhone ? `91${localPhone}` : '';
   const update = (index: number, patch: Partial<JobCardLineItem>) => set({ lineItems: form.lineItems.map((line, i) => i === index ? { ...line, ...patch, updatedBy: actions?.currentUser, updatedAt: new Date().toISOString() } : line) });
   const share = async () => {
-    setShareOpen(true); setSharing(true); setNotice(''); setLink('');
+    setShareOpen(true);
+    if (!validPhone) {
+      setNotice('Enter a valid 10-digit customer mobile number to continue.');
+      return;
+    }
+    setSharing(true); setNotice(''); setLink('');
     try {
       const result = await actions?.share({ channels: ['WhatsApp'] });
       if (!result?.link) { setNotice('Could not share the service list. Please retry.'); return; }
@@ -23,13 +32,18 @@ export default function ApprovalStep({ form, set, actions }: JobCardStepProps) {
     } catch { setNotice('Could not share the service list. Please retry.'); }
     finally { setSharing(false); }
   };
-  const phone = form.customer.phone.replace(/\D/g, '');
-  const whatsapp = 'https://wa.me/' + (phone.length === 10 ? '91' + phone : phone) + '?text=' + encodeURIComponent((actions?.businessName || 'Your workshop') + ' - Job ' + (actions?.reference || '') + '\nPlease review your services: ' + link);
+  const openShare = () => {
+    setShareOpen(true); setNotice(''); setLink('');
+    if (validPhone) void share();
+    else setNotice('Enter a valid 10-digit customer mobile number to continue.');
+  };
+  const whatsapp = 'https://wa.me/' + internationalPhone + '?text=' + encodeURIComponent((actions?.businessName || 'Your workshop') + ' - Job ' + (actions?.reference || '') + '\nPlease review your services: ' + link);
   return <Box sx={{ bgcolor: 'background.paper', border: 1, borderColor: 'divider', borderRadius: 1, p: 1, minHeight: 300, boxShadow: 1 }}>
     <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ sm: 'center' }} gap={1} sx={{ px: 1.5, py: 0.5, mb: 1 }}>
       <Typography variant="h6" fontWeight={700} color="primary">Service List for Approval</Typography>
-      <Stack direction="row" gap={1}><Button variant="contained" startIcon={<ShareIcon />} disabled={sharing || !actions || !form.lineItems.length || !phone} onClick={share} sx={{ bgcolor: '#00B42A', backgroundImage: 'none', color: '#fff', borderRadius: 1, '&:hover': { bgcolor: '#009a24' } }}>Share to Customer</Button><Button variant="contained" onClick={actions?.skip} disabled={!actions || actions.saving} sx={{ borderRadius: 1 }}>Skip &amp; Next</Button></Stack>
+      <Stack direction="row" gap={1}><Button variant="contained" startIcon={<ShareIcon />} disabled={sharing || !actions || !form.lineItems.length} onClick={openShare} sx={{ bgcolor: '#00B42A', backgroundImage: 'none', color: '#fff', borderRadius: 1, '&:hover': { bgcolor: '#009a24' } }}>{sharing ? 'Preparing…' : 'Share to Customer'}</Button><Button variant="contained" onClick={actions?.skip} disabled={!actions || actions.saving} sx={{ borderRadius: 1 }}>Skip &amp; Next</Button></Stack>
     </Stack>
+    {!validPhone && <Alert severity="warning" sx={{ mx: 1.5, mb: 1 }}>Customer mobile number is missing or invalid. Select Share to Customer to add it.</Alert>}
     {form.approval.respondedAt && <Typography variant="caption" sx={{ px: 1.5 }} role="status">{form.approval.status === 'approved' ? 'Approved' : 'Rejected'} by Customer on {formatDateTime(form.approval.respondedAt)}</Typography>}
     <Accordion defaultExpanded disableGutters elevation={0} sx={{ border: 1, borderColor: 'divider', borderRadius: 1, '&:before': { display: 'none' } }}>
       <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ minHeight: 44, px: 1.25, '& .MuiAccordionSummary-content': { my: 0.5 } }}><Typography variant="h6" fontWeight={700}>Service Info</Typography></AccordionSummary>
@@ -46,6 +60,33 @@ export default function ApprovalStep({ form, set, actions }: JobCardStepProps) {
         })}{!form.lineItems.length && <TableRow><TableCell colSpan={9}>No services added.</TableCell></TableRow>}</TableBody>
       </Table></TableContainer></AccordionDetails>
     </Accordion>
-    <Dialog open={shareOpen} onClose={() => !sharing && setShareOpen(false)} fullWidth maxWidth="xs"><DialogTitle>Share to Customer</DialogTitle><DialogContent><Typography>{sharing ? 'Preparing approval link...' : notice}</Typography>{link && <Button component="a" href={whatsapp} target="_blank" rel="noopener noreferrer" variant="contained" sx={{ mt: 2 }}>Open WhatsApp</Button>}</DialogContent><DialogActions><Button disabled={sharing} onClick={() => setShareOpen(false)}>Close</Button></DialogActions></Dialog>
+    <Dialog open={shareOpen} onClose={() => !sharing && setShareOpen(false)} fullWidth maxWidth="xs">
+      <DialogTitle>Share to Customer</DialogTitle>
+      <DialogContent>
+        <TextField
+          autoFocus={!validPhone}
+          fullWidth
+          required
+          label="Customer Mobile Number"
+          value={form.customer.phone}
+          onChange={(event) => {
+            set({ customer: { ...form.customer, phone: event.target.value } });
+            setNotice('');
+            setLink('');
+          }}
+          error={Boolean(form.customer.phone) && !validPhone}
+          helperText={validPhone ? `WhatsApp recipient: +91 ${localPhone}` : 'Enter a valid 10-digit Indian mobile number'}
+          inputProps={{ inputMode: 'tel', maxLength: 14 }}
+          sx={{ mt: 1, mb: 2 }}
+        />
+        {sharing && <Typography>Preparing approval link...</Typography>}
+        {!sharing && notice && <Alert severity={link ? 'info' : 'warning'}>{notice}</Alert>}
+        {link && <Button component="a" href={whatsapp} target="_blank" rel="noopener noreferrer" variant="contained" startIcon={<ShareIcon />} sx={{ mt: 2 }}>Open WhatsApp</Button>}
+      </DialogContent>
+      <DialogActions>
+        <Button disabled={sharing} onClick={() => setShareOpen(false)}>Close</Button>
+        {!link && <Button variant="contained" disabled={sharing || !validPhone} onClick={share}>Generate &amp; Share</Button>}
+      </DialogActions>
+    </Dialog>
   </Box>;
 }

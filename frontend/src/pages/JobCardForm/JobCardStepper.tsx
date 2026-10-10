@@ -11,6 +11,8 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
 import { JOB_CARD_STEPS } from '../../utils/jobCard';
 
+export type FlowStep = (typeof JOB_CARD_STEPS)[number];
+
 export interface JobCardStepperProps {
   currentStep: number;
   maxStepReached: number;
@@ -18,6 +20,7 @@ export interface JobCardStepperProps {
   stepValidity: Record<number, boolean>;
   stepIssueCount: Record<number, number>;
   onStepSelect: (step: number) => void;
+  steps?: readonly FlowStep[];
 }
 
 export default function JobCardStepper({
@@ -27,17 +30,18 @@ export default function JobCardStepper({
   stepValidity,
   stepIssueCount,
   onStepSelect,
+  steps = JOB_CARD_STEPS,
 }: JobCardStepperProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const progress = ((currentStep + 1) / JOB_CARD_STEPS.length) * 100;
+  const progress = ((currentStep + 1) / steps.length) * 100;
 
   if (isMobile) {
     return (
       <Box sx={{ mb: 2 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: 0.5 }}>
           <Typography variant="subtitle2" fontWeight={800}>
-            Step {currentStep + 1} of {JOB_CARD_STEPS.length} · {JOB_CARD_STEPS[currentStep].short}
+            Step {currentStep + 1} of {steps.length} · {steps[currentStep].short}
           </Typography>
           <Typography variant="caption" color="text.secondary">
             {Math.round(progress)}%
@@ -50,7 +54,7 @@ export default function JobCardStepper({
 
   return (
     <Stepper nonLinear activeStep={currentStep} alternativeLabel sx={{ mb: 1, '& .MuiStepConnector-line': { borderColor: 'primary.main' } }}>
-      {JOB_CARD_STEPS.map((step, index) => {
+      {steps.map((step, index) => {
         const isComplete = completedSteps.includes(index) && stepValidity[index] !== false;
         const isLocked = index > maxStepReached;
         const issues = stepIssueCount[index] || 0;

@@ -9,11 +9,13 @@ export const getProducts = async (filters: any): Promise<any> => {
   const limit = Math.min(parseInt(filters.limit, 10) || 20, 100);
   const skip = (page - 1) * limit;
 
-  const filter: Record<string, any> = { isActive: true };
+  const filter: Record<string, any> = { isActive: true, deletedAt: null };
   if (filters.q) {
     filter.$or = [
       { productName: { $regex: filters.q.trim(), $options: 'i' } },
       { productCode: { $regex: filters.q.trim(), $options: 'i' } },
+      { brand: { $regex: filters.q.trim(), $options: 'i' } },
+      { barcode: { $regex: filters.q.trim(), $options: 'i' } },
       { description: { $regex: filters.q.trim(), $options: 'i' } },
     ];
   }
@@ -30,7 +32,7 @@ export const getProducts = async (filters: any): Promise<any> => {
   const sortField = filters.sort || 'productName';
   const sort: Record<string, 1 | -1> = { [sortField]: filters.order === 'desc' ? -1 : 1 };
 
-  const fields = filters.fields || 'productCode productName category pricing inventory supplier createdAt';
+  const fields = filters.fields || 'productCode productName brand hsn barcode vehicleType category subCategory partType remark pricing inventory supplier createdAt';
   const [data, total] = await Promise.all([
     Product.find(filter).sort(sort).skip(skip).limit(limit).select(fields),
     Product.countDocuments(filter),
@@ -45,7 +47,10 @@ export const getProducts = async (filters: any): Promise<any> => {
 
 // POST /api/products
 export const createProduct = async (payload: any): Promise<any> => {
-  const { productCode, productName, category, description, pricing, inventory, supplier, images } = payload;
+  const {
+    productCode, productName, brand, hsn, barcode, vehicleType, category, subCategory,
+    partType, remark, description, pricing, inventory, supplier, images, employeeId, employeeName,
+  } = payload;
   if (!productCode || !productName) {
     throw new ApiError(400, 'Product code and product name are required');
   }
@@ -55,12 +60,21 @@ export const createProduct = async (payload: any): Promise<any> => {
   const product = new Product({
     productCode,
     productName,
+    brand,
+    hsn,
+    barcode,
+    vehicleType,
     category,
+    subCategory,
+    partType,
+    remark,
     description,
     pricing: pricing || {},
     inventory: inventory || {},
     supplier: supplier || {},
     images: images || [],
+    employeeId,
+    employeeName,
   });
   await product.save();
   return { success: true, data: product.toSafeJSON() };
@@ -84,7 +98,16 @@ export const updateProduct = async (routeParams: any, payload: any): Promise<any
   }
   if (b.productCode) product.productCode = b.productCode;
   if (b.productName) product.productName = b.productName;
+  if (b.brand != null) product.brand = b.brand;
+  if (b.hsn != null) product.hsn = b.hsn;
+  if (b.barcode != null) product.barcode = b.barcode;
+  if (b.vehicleType != null) product.vehicleType = b.vehicleType;
   if (b.category != null) product.category = b.category;
+  if (b.subCategory != null) product.subCategory = b.subCategory;
+  if (b.partType != null) product.partType = b.partType;
+  if (b.remark != null) product.remark = b.remark;
+  if (b.employeeId != null) product.employeeId = b.employeeId;
+  if (b.employeeName != null) product.employeeName = b.employeeName;
   if (b.description != null) product.description = b.description;
   if (b.pricing) Object.assign(product.pricing, b.pricing);
   if (b.inventory) Object.assign(product.inventory, b.inventory);

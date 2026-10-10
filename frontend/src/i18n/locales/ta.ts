@@ -14,7 +14,7 @@ const ta = {
   'nav.jobCards': 'ஜாப் கார்டுகள்',
   'nav.newJobCard': 'புதிய ஜாப் கார்டு',
   'nav.estimates': 'மதிப்பீடுகள்',
-  'nav.sellProducts': 'பொருட்களை விற்க',
+  'nav.sellProducts': 'Counter Sale',
   'nav.customers': 'வாடிக்கையாளர்கள்',
   'nav.vehicles': 'வாகனங்கள்',
   'nav.advisors': 'ஆலோசகர்கள்',

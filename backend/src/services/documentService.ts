@@ -1,5 +1,7 @@
 import JobCard, { DOCUMENT_TYPES } from '../models/JobCard.js';
 import ApiError from '../utils/ApiError.js';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // POST /api/jobcards/:id/documents  (multipart: file, type metadata)
 export const uploadDocument = async (routeParams: any, payload: any, actor: any, uploadedFile: any): Promise<any> => {
@@ -29,6 +31,16 @@ export const getDocuments = async (routeParams: any): Promise<any> => {
   const jobCard = await JobCard.findById(routeParams.id);
   if (!jobCard) throw new ApiError(404, 'Job card not found');
   return { success: true, data: jobCard.documents || [] };
+};
+
+export const getDocumentFile = async (routeParams: any): Promise<any> => {
+  const jobCard = await JobCard.findById(routeParams.id);
+  if (!jobCard) throw new ApiError(404, 'Job card not found');
+  const document = jobCard.documents?.id(routeParams.docId);
+  if (!document) throw new ApiError(404, 'Document not found');
+  const absolutePath = path.resolve(document.filePath);
+  if (!fs.existsSync(absolutePath)) throw new ApiError(404, 'Stored file not found');
+  return { absolutePath, mimeType: document.mimeType };
 };
 
 // DELETE /api/jobcards/:id/documents/:docId

@@ -1,5 +1,5 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import {
   AppBar, Toolbar, Drawer, List, ListItem, ListItemButton, ListItemIcon,
@@ -18,6 +18,7 @@ import SupportAgentIcon from '@mui/icons-material/SupportAgent';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import SettingsIcon from '@mui/icons-material/Settings';
 import InventoryIcon from '@mui/icons-material/Inventory2';
+import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import LogoutIcon from '@mui/icons-material/Logout';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import { logout } from '../redux/authSlice';
@@ -31,29 +32,103 @@ const NAV = [
   { labelKey: 'nav.dashboard', path: '/', icon: DashboardIcon, sectionKey: 'section.overview' },
   { labelKey: 'nav.jobCards', path: '/jobcards', icon: AssignmentIcon, sectionKey: 'section.operations' },
   { labelKey: 'nav.estimates', path: '/estimates', icon: ReceiptIcon, sectionKey: 'section.operations' },
-  { labelKey: 'nav.sellProducts', path: '/sell', icon: ShoppingCartIcon, sectionKey: 'section.operations' },
+  { labelKey: 'nav.sellProducts', path: '/counter-sale', icon: ShoppingCartIcon, sectionKey: 'section.operations' },
   { labelKey: 'nav.customers', path: '/customers', icon: PeopleIcon, sectionKey: 'section.directory' },
   { labelKey: 'nav.vehicles', path: '/vehicles', icon: DirectionsCarIcon, sectionKey: 'section.directory' },
   { labelKey: 'nav.advisors', path: '/advisors', icon: SupportAgentIcon, sectionKey: 'section.directory' },
   { labelKey: 'nav.reports', path: '/reports', icon: AssessmentIcon, sectionKey: 'section.insights' },
   { labelKey: 'nav.inventory', path: '/inventory', icon: InventoryIcon, sectionKey: 'section.inventory' },
+  { labelKey: 'nav.partOrders', path: '/part-orders', icon: LocalShippingIcon, sectionKey: 'section.inventory' },
   { labelKey: 'nav.settings', path: '/settings', icon: SettingsIcon, sectionKey: 'section.system' },
 ];
 
 export default function Layout() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
   const t = useT();
   const user = useAppSelector((state) => state.auth.user);
   const isMobile = useMediaQuery('(max-width:900px)');
   const [open, setOpen] = useState(!isMobile);
   const [anchorEl, setAnchorEl] = useState(null);
   const [notifEl, setNotifEl] = useState(null);
+  const navigationGuardRef = useRef<(() => boolean) | null>(null);
+  const skipLocationGuardRef = useRef(false);
+  const blockedLocationRef = useRef<string | null>(null);
+  const restoreLocationRef = useRef<string | null>(null);
+  const previousLocationRef = useRef(`${location.pathname}${location.search}${location.hash}`);
+  const previousHistoryIndexRef = useRef<number | null>(
+    typeof window.history.state?.idx === 'number' ? window.history.state.idx : null,
+  );
+
+  const registerNavigationGuard = useCallback((guard: () => boolean) => {
+    navigationGuardRef.current = guard;
+    return () => {
+      if (navigationGuardRef.current === guard) navigationGuardRef.current = null;
+    };
+  }, []);
+
+  const navigateTo = (path: string) => {
+    navigate(path);
+  };
+
+  useLayoutEffect(() => {
+    const currentLocation = `${location.pathname}${location.search}${location.hash}`;
+    if (currentLocation === previousLocationRef.current) {
+      skipLocationGuardRef.current = false;
+      blockedLocationRef.current = null;
+      restoreLocationRef.current = null;
+      return;
+    }
+
+    if (skipLocationGuardRef.current) {
+      skipLocationGuardRef.current = false;
+      previousLocationRef.current = currentLocation;
+      previousHistoryIndexRef.current =
+        typeof window.history.state?.idx === 'number' ? window.history.state.idx : null;
+      return;
+    }
+
+    if (currentLocation === blockedLocationRef.current) {
+      blockedLocationRef.current = null;
+      return;
+    }
+
+    if (currentLocation === restoreLocationRef.current) {
+      restoreLocationRef.current = null;
+      previousHistoryIndexRef.current =
+        typeof window.history.state?.idx === 'number' ? window.history.state.idx : null;
+      return;
+    }
+
+    if (navigationGuardRef.current && !navigationGuardRef.current()) {
+      const currentIndex = window.history.state?.idx;
+      const previousIndex = previousHistoryIndexRef.current;
+      const historyDelta = typeof currentIndex === 'number' && previousIndex !== null
+        ? previousIndex - currentIndex
+        : 0;
+      blockedLocationRef.current = currentLocation;
+      restoreLocationRef.current = previousLocationRef.current;
+      if (historyDelta !== 0) window.history.go(historyDelta);
+      else navigate(previousLocationRef.current, { replace: true });
+      return;
+    }
+
+    previousLocationRef.current = currentLocation;
+    previousHistoryIndexRef.current =
+      typeof window.history.state?.idx === 'number' ? window.history.state.idx : null;
+  }, [location.hash, location.pathname, location.search, navigate]);
+
+  // The Inventory page renders its own rounded header (with its own menu
+  // button), so hide the global app bar and let that page drive the drawer.
+  const isInventory = location.pathname.startsWith('/inventory') || location.pathname.startsWith('/part-orders');
 
   const handleLogout = async () => {
+    if (navigationGuardRef.current && !navigationGuardRef.current()) return;
     setAnchorEl(null);
     await dispatch(logout());
     dispatch(showToast({ severity: 'info', message: t('common.loggedOut') }));
+    skipLocationGuardRef.current = true;
     navigate('/login');
   };
 
@@ -110,7 +185,7 @@ const drawerContent = (
               )}
               <ListItem disablePadding sx={{ borderRadius: 2 }}>
                 <ListItemButton
-                  onClick={() => navigate(item.path)}
+                  onClick={() => navigateTo(item.path)}
                   selected={active}
                   sx={{
                     borderRadius: 2, py: 0.7, px: 1.5,
@@ -144,6 +219,7 @@ const drawerContent = (
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      {!isInventory && (
       <AppBar
         position="fixed"
         elevation={0}
@@ -205,6 +281,7 @@ const drawerContent = (
           </Box>
         </Toolbar>
       </AppBar>
+      )}
 
       <Drawer
         variant={isMobile ? 'temporary' : 'persistent'}
@@ -223,18 +300,22 @@ const drawerContent = (
         component="main"
         sx={{
           flexGrow: 1,
+          minWidth: location.pathname.startsWith('/part-orders') ? 0 : undefined,
           p: { xs: 2, sm: 3 },
           width: { sm: open ? `calc(100% - ${drawerWidth}px)` : '100%' },
-          mt: 8,
+          mt: isInventory ? 0 : 8,
           bgcolor: 'background.default',
           minHeight: '100vh',
         }}
       >
         <Box
           className="fade-in-up"
-          sx={{ maxWidth: 1040, margin: '0 auto', width: '100%' }}
+          sx={{ maxWidth: isInventory ? 'none' : 1040, margin: '0 auto', width: '100%' }}
         >
-          <Outlet />
+          <Outlet context={{
+            toggleDrawer: () => setOpen((o) => !o),
+            registerNavigationGuard,
+          }} />
         </Box>
       </Box>
     </Box>

@@ -14,7 +14,7 @@ const ka = {
   'nav.jobCards': 'სამუშაო ბარათები',
   'nav.newJobCard': 'ახალი სამუშაო ბარათი',
   'nav.estimates': 'შეფასებები',
-  'nav.sellProducts': 'პროდუქტების გაყიდვა',
+  'nav.sellProducts': 'Counter Sale',
   'nav.customers': 'კლიენტები',
   'nav.vehicles': 'მანქანები',
   'nav.advisors': 'კონსულტანტები',

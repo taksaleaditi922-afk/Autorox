@@ -11,7 +11,7 @@ import api from '../../services/api';
 
 import { useEffect, useMemo, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -41,12 +41,10 @@ import * as approvalApi from '../../services/jobCard/approvalService';
 import type { AdvancePayload, DeliveryResult } from '../../services/jobCard/approvalService';
 import Loader from '../../components/Loader';
 import JobCardStepper from './JobCardStepper';
-import VehicleClientStep from './steps/VehicleClientStep';
 import InspectionReportStep from './steps/InspectionReportStep';
-import ServicesPartsStep from './steps/ServicesPartsStep';
 import ApprovalStep from './steps/ApprovalStep';
-import OrderSummaryStep from './steps/OrderSummaryStep';
 import ReminderStep from './steps/ReminderStep';
+import { VehicleCustomerDetailsStep, ServiceDetailsStep, OrderSummaryStep } from './steps/shared';
 import type { JobCardStepActions, JobCardStepProps } from './stepProps';
 import {
   JOB_CARD_STEPS,
@@ -60,16 +58,42 @@ import {
 import { stepValidator, validateJobCardForm } from '../../utils/jobCardValidation';
 import { formatCurrency } from '../../utils/format';
 
-const DRAFT_KEY = 'autorox:jobcard:draft:new';
-
 const STEP_COMPONENTS: React.ComponentType<JobCardStepProps>[] = [
-  VehicleClientStep,
+  VehicleCustomerDetailsStep,
   InspectionReportStep,
-  ServicesPartsStep,
+  ServiceDetailsStep,
   ApprovalStep,
   OrderSummaryStep,
   ReminderStep,
 ];
+
+export type JobFlowMode = 'job-card' | 'counter-sale';
+const JOB_FLOW = JOB_CARD_STEPS.map((step, validatorIndex) => ({ step, validatorIndex, Component: STEP_COMPONENTS[validatorIndex] }));
+const COUNTER_SALE_FLOW = [JOB_FLOW[0], JOB_FLOW[2], JOB_FLOW[4]];
+const FLOW_CONFIG = {
+  'job-card': {
+    flow: JOB_FLOW,
+    title: 'New Job Card',
+    editTitle: 'Edit Job Card',
+    reviewTitle: 'Job Card',
+    listLabel: 'Job Cards',
+    listPath: '/jobcards',
+    draftKey: 'autorox:jobcard:draft:new',
+    requiresApproval: true,
+    finalLabel: 'Create Job Card',
+  },
+  'counter-sale': {
+    flow: COUNTER_SALE_FLOW,
+    title: 'Add Counter Sale',
+    editTitle: 'Edit Counter Sale',
+    reviewTitle: 'Counter Sale',
+    listLabel: 'Counter Sales',
+    listPath: '/counter-sale',
+    draftKey: 'autorox:counter-sale:draft:new',
+    requiresApproval: false,
+    finalLabel: 'Complete Sale',
+  },
+} as const;
 
 /**
  * A draft written by an older build may be missing newer sections, so it is
@@ -98,9 +122,9 @@ function mergeWithDefaults(stored: Partial<JobCardFormState>): JobCardFormState 
   };
 }
 
-function readDraft(): { form: JobCardFormState; savedAt: string } | null {
+function readDraft(key: string): { form: JobCardFormState; savedAt: string } | null {
   try {
-    const raw = localStorage.getItem(DRAFT_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (!parsed?.form) return null;
@@ -110,17 +134,17 @@ function readDraft(): { form: JobCardFormState; savedAt: string } | null {
   }
 }
 
-function writeDraft(form: JobCardFormState): void {
+function writeDraft(key: string, form: JobCardFormState): void {
   try {
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ form, savedAt: new Date().toISOString() }));
+    localStorage.setItem(key, JSON.stringify({ form, savedAt: new Date().toISOString() }));
   } catch {
     // Storage can be full or blocked; autosave is best-effort.
   }
 }
 
-function clearDraft(): void {
+function clearDraft(key: string): void {
   try {
-    localStorage.removeItem(DRAFT_KEY);
+    localStorage.removeItem(key);
   } catch {
     // ignore
   }
@@ -131,11 +155,18 @@ function draftHasContent(form?: JobCardFormState | null): boolean {
   return Boolean(form.vehicle?.registrationNumber || form.customer?.name || (form.lineItems || []).length);
 }
 
-export default function JobCardForm() {
+export function JobFlowWizard({ mode = 'job-card' }: { mode?: JobFlowMode }) {
+  const isCounterSale = mode === 'counter-sale';
+  const config = FLOW_CONFIG[mode];
+  const flow = config.flow;
+  const steps = flow.map((entry) => entry.step);
+  const draftKey = config.draftKey;
+  const listPath = config.listPath;
   const { id } = useParams();
-  const isEdit = Boolean(id);
+  const isEdit = !isCounterSale && Boolean(id);
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { current } = useSelector((state: RootState) => state.jobCards);
@@ -163,22 +194,33 @@ export default function JobCardForm() {
       void dispatch(fetchJobCard(id as string));
       return () => undefined;
     }
+    const routedSale = isCounterSale ? (location.state as any)?.counterSale : null;
+    if (routedSale) {
+      const base = createEmptyJobCardForm();
+      setForm({
+        ...base,
+        customer: { ...base.customer, name: routedSale.customerName || '', phone: routedSale.contactNumber || '' },
+        lineItems: (routedSale.items || []).map((item: any) => createLineItem({ type: 'service', name: item.name, qty: item.qty, price: item.price })),
+      });
+      setRecoverable(null);
+      return () => undefined;
+    }
     setForm(createEmptyJobCardForm());
-    const stored = readDraft();
+    const stored = readDraft(draftKey);
     setRecoverable(draftHasContent(stored?.form) ? stored : null);
     return () => undefined;
-  }, [id, isEdit, dispatch]);
+  }, [id, isEdit, dispatch, isCounterSale, location.state, draftKey]);
 
   useEffect(() => {
     if (isEdit && current && current._id === id) {
       setForm(mapJobCardToForm(current));
-      setMaxStepReached(JOB_CARD_STEPS.length - 1);
+      setMaxStepReached(steps.length - 1);
     }
   }, [isEdit, current, id]);
 
   // Merge only approval data, preserving unsaved service and customer edits.
   useEffect(() => {
-    if (!persistedId || submitting) return;
+    if (isCounterSale || !persistedId || submitting) return;
     let active = true;
     let pending = false;
     const refresh = async () => {
@@ -196,14 +238,14 @@ export default function JobCardForm() {
     const timer = window.setInterval(refresh, 15000);
     window.addEventListener('focus', refresh);
     return () => { active = false; clearInterval(timer); window.removeEventListener('focus', refresh); };
-  }, [persistedId, submitting]);
+  }, [persistedId, submitting, isCounterSale]);
 
   // Deep link / dashboard shortcuts, e.g. /jobcards/:id/edit?step=1
   useEffect(() => {
     const raw = searchParams.get('step');
     if (raw === null) return;
     const parsed = Number(raw);
-    if (Number.isInteger(parsed) && parsed >= 0 && parsed < JOB_CARD_STEPS.length) {
+    if (Number.isInteger(parsed) && parsed >= 0 && parsed < steps.length) {
       setCurrentStep(parsed);
       setMaxStepReached((m) => Math.max(m, parsed));
     }
@@ -214,12 +256,12 @@ export default function JobCardForm() {
   // Autosave new drafts to this browser. Edited job cards are persisted on save.
   useEffect(() => {
     if (isEdit) return () => undefined;
-    const timer = setTimeout(() => writeDraft(form), 700);
+    const timer = setTimeout(() => writeDraft(draftKey, form), 700);
     return () => clearTimeout(timer);
-  }, [form, isEdit]);
+  }, [form, isEdit, draftKey]);
 
   // --------------------------------------------------------------- validation
-  const stepResults = useMemo(() => JOB_CARD_STEPS.map((_step, index) => stepValidator(index)(form)), [form]);
+  const stepResults = useMemo(() => flow.map((entry) => stepValidator(entry.validatorIndex)(form)), [form, flow]);
 
   const stepValidity = useMemo(
     () => Object.fromEntries(stepResults.map((result, index) => [index, result.valid])) as Record<number, boolean>,
@@ -262,14 +304,14 @@ export default function JobCardForm() {
         showToast({
           severity: 'error',
           message: `Please fix ${result.summary.length || Object.keys(result.errors).length} item(s) in ${
-            JOB_CARD_STEPS[currentStep].label
+            steps[currentStep].label
           } before continuing`,
         })
       );
       scrollTop();
       return;
     }
-    if ((currentStep === 3 || currentStep === 4) && persistedId) {
+    if (!isCounterSale && (flow[currentStep].validatorIndex === 3 || flow[currentStep].validatorIndex === 4) && persistedId) {
       setSubmitting(true);
       const action = await dispatch(updateJobCard({ id: persistedId, payload: buildJobCardPayload(form) }));
       setSubmitting(false);
@@ -278,11 +320,11 @@ export default function JobCardForm() {
         return;
       }
     }
-    writeDraft(form);
+    writeDraft(draftKey, form);
     setDirty(false);
     setCompletedSteps((previous) => (previous.includes(currentStep) ? previous : [...previous, currentStep]));
     setMaxStepReached((previous) => Math.max(previous, currentStep + 1));
-    setCurrentStep((previous) => Math.min(previous + 1, JOB_CARD_STEPS.length - 1));
+    setCurrentStep((previous) => Math.min(previous + 1, steps.length - 1));
     scrollTop();
   };
 
@@ -292,7 +334,7 @@ export default function JobCardForm() {
         setConfirmLeave(true);
         return;
       }
-      navigate('/jobcards');
+      navigate(listPath);
       return;
     }
     if (currentStep === 4 && dirty && !window.confirm('Go back with unsaved changes? Your changes will remain in this form.')) return;
@@ -301,7 +343,7 @@ export default function JobCardForm() {
   };
 
   const handleSaveDraft = async () => {
-    writeDraft(form);
+    writeDraft(draftKey, form);
     if (!persistedId) {
       setDirty(false);
       dispatch(showToast({ severity: 'success', message: 'Draft saved in this browser' }));
@@ -324,7 +366,7 @@ export default function JobCardForm() {
     const action: any = await dispatch(createJobCard({ ...buildJobCardPayload(form), isDraft: true }));
     if (action.type.endsWith('/fulfilled') && action.payload?._id) {
       setPersistedId(action.payload._id);
-      dispatch(showToast({ severity: 'info', message: 'Saved as a draft so the approval link can be shared' }));
+      dispatch(showToast({ severity: 'info', message: 'Job card draft saved' }));
       return action.payload._id;
     }
     dispatch(showToast({ severity: 'error', message: action.payload || 'Could not save the job card' }));
@@ -404,7 +446,12 @@ export default function JobCardForm() {
   };
 
   const handleSubmit = async () => {
-    const result = validateJobCardForm(form);
+    const result = isCounterSale
+      ? flow.map((entry) => stepValidator(entry.validatorIndex)(form)).reduce(
+          (all, current) => ({ valid: all.valid && current.valid, errors: { ...all.errors, ...current.errors }, summary: [...all.summary, ...current.summary] }),
+          { valid: true, errors: {} as Record<string, string>, summary: [] as string[] }
+        )
+      : validateJobCardForm(form);
     if (!result.valid) {
       const firstInvalid = stepResults.findIndex((step) => !step.valid);
       if (firstInvalid >= 0) {
@@ -414,6 +461,28 @@ export default function JobCardForm() {
       }
       dispatch(showToast({ severity: 'error', message: 'Please fix the highlighted items before saving' }));
       scrollTop();
+      return;
+    }
+
+    if (isCounterSale) {
+      const totals = computeOrderSummary(form);
+      const stored = JSON.parse(localStorage.getItem('autorox:counter-sales') || '[]');
+      const sequence = stored.length + 16;
+      const counterSale = {
+        id: `counter-${Date.now()}`,
+        date: new Intl.DateTimeFormat('en-GB').format(new Date()),
+        customerName: form.customer.name,
+        contactNumber: form.customer.phone,
+        invoiceNumber: `S26-1769-${String(sequence).padStart(4, '0')}`,
+        paymentStatus: 'PAID',
+        items: form.lineItems.map((item) => ({ name: item.name, qty: item.qty, price: item.price })),
+        total: totals.grandTotal,
+        serviceOrder: form,
+      };
+      localStorage.setItem('autorox:counter-sales', JSON.stringify([counterSale, ...stored]));
+      clearDraft(draftKey);
+      dispatch(showToast({ severity: 'success', message: 'Counter sale completed and invoice generated' }));
+      navigate('/counter-sale');
       return;
     }
 
@@ -429,7 +498,7 @@ export default function JobCardForm() {
     setSubmitting(false);
 
     if (action.type.endsWith('/fulfilled')) {
-      clearDraft();
+      clearDraft(draftKey);
       dispatch(showToast({ severity: 'success', message: isEdit ? 'Job card updated' : 'Job card created' }));
       const newId = action.payload?._id || targetId || id;
       navigate(newId ? `/jobcards/${newId}` : '/jobcards');
@@ -448,7 +517,7 @@ export default function JobCardForm() {
   };
 
   const handleDiscard = () => {
-    clearDraft();
+    clearDraft(draftKey);
     setRecoverable(null);
     setAttemptedSteps([]);
     setForm(createEmptyJobCardForm());
@@ -460,12 +529,15 @@ export default function JobCardForm() {
   }
 
   const stepActions: JobCardStepActions = {
+    mode,
+    requiresApproval: config.requiresApproval,
     reference: current?._id === persistedId ? current.jobCardNumber : persistedId || undefined,
     createdAt: current?._id === persistedId ? current.createdAt : undefined,
     businessName: import.meta.env.VITE_BUSINESS_NAME || 'Your workshop',
     goNext: handleContinue,
     goBack: handleBack,
     save: handleSaveDraft,
+    ensurePersisted,
     recordAdvance,
     share,
     setApproval,
@@ -475,26 +547,27 @@ export default function JobCardForm() {
     saving: submitting,
   };
 
-  const StepComponent = STEP_COMPONENTS[currentStep];
+  const StepComponent = flow[currentStep].Component;
   const engaged = attemptedSteps.includes(currentStep) || completedSteps.includes(currentStep);
   const stepErrors = engaged ? stepResults[currentStep].errors : {};
-  const isReview = currentStep === 3 || currentStep === 4;
-  const isLastStep = currentStep === JOB_CARD_STEPS.length - 1;
+  const originalStepIndex = flow[currentStep].validatorIndex;
+  const isReview = originalStepIndex === 3 || originalStepIndex === 4;
+  const isLastStep = currentStep === steps.length - 1;
 
   return (
     <Box>
       {/* ------------------------------- header ------------------------------- */}
-      {isReview ? <Paper sx={{ mb: 3.5, px: { xs: 2, md: 4 }, py: 1.5, borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}><Typography variant="h5" fontWeight={800}>Job Card</Typography><Stack direction="row" gap={1.5} alignItems="center" flexWrap="wrap">{currentStep === 4 && <><Typography fontWeight={600}>Estimated Delivery</Typography><TextField type="date" size="small" value={form.estimatedDelivery.date} inputProps={{ 'aria-label': 'Estimated delivery date' }} onChange={e => set({ estimatedDelivery: { ...form.estimatedDelivery, date: e.target.value } })} /><TextField type="time" size="small" value={form.estimatedDelivery.time} inputProps={{ 'aria-label': 'Estimated delivery time' }} onChange={e => set({ estimatedDelivery: { ...form.estimatedDelivery, time: e.target.value } })} /></>}<Avatar>{currentUser[0]}</Avatar></Stack></Paper> : <>
+      {isReview ? <Paper sx={{ mb: 3.5, px: { xs: 2, md: 4 }, py: 1.5, borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap' }}><Typography variant="h5" fontWeight={800}>{config.reviewTitle}</Typography><Stack direction="row" gap={1.5} alignItems="center" flexWrap="wrap">{originalStepIndex === 4 && <><Typography fontWeight={600}>Estimated Delivery</Typography><TextField type="date" size="small" value={form.estimatedDelivery.date} inputProps={{ 'aria-label': 'Estimated delivery date' }} onChange={e => set({ estimatedDelivery: { ...form.estimatedDelivery, date: e.target.value } })} /><TextField type="time" size="small" value={form.estimatedDelivery.time} inputProps={{ 'aria-label': 'Estimated delivery time' }} onChange={e => set({ estimatedDelivery: { ...form.estimatedDelivery, time: e.target.value } })} /></>}<Avatar>{currentUser[0]}</Avatar></Stack></Paper> : <>
       <Box sx={{ mb: 2.5 }}>
-        <Button size="small" startIcon={<ArrowBackIcon />} onClick={() => navigate('/jobcards')} sx={{ mb: 0.5, ml: -0.5 }}>
-          Back to Job Cards
+        <Button size="small" startIcon={<ArrowBackIcon />} onClick={() => navigate(listPath)} sx={{ mb: 0.5, ml: -0.5 }}>
+          Back to {config.listLabel}
         </Button>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 2, flexWrap: 'wrap' }}>
           <Box sx={{ minWidth: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <AssignmentTurnedInIcon color="primary" />
               <Typography variant="h5" fontWeight={800}>
-                {isEdit ? 'Edit Job Card' : 'New Job Card'}
+                {isEdit ? config.editTitle : config.title}
               </Typography>
             </Box>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.25 }}>
@@ -529,7 +602,7 @@ export default function JobCardForm() {
             </Stack>
           }
         >
-          An unsaved job card draft from{' '}
+          An unsaved {isCounterSale ? 'counter sale' : 'job card'} draft from{' '}
           {recoverable.savedAt ? new Date(recoverable.savedAt).toLocaleString('en-IN') : 'earlier'} was found in this browser.
         </Alert>
       )}
@@ -537,6 +610,7 @@ export default function JobCardForm() {
       {/* ------------------------------ stepper ------------------------------- */}
       <Paper elevation={isReview ? 0 : undefined} sx={{ p: { xs: 1.5, sm: 2 }, mb: 2.5, borderRadius: 3, ...(isReview ? { bgcolor: 'transparent' } : {}) }}>
         <JobCardStepper
+          steps={steps}
           currentStep={currentStep}
           maxStepReached={maxStepReached}
           completedSteps={completedSteps}
@@ -549,7 +623,7 @@ export default function JobCardForm() {
         />
         {!isReview && <><Divider sx={{ mb: 1.5 }} />
         <Typography variant="body2" color="text.secondary">
-          <strong>{JOB_CARD_STEPS[currentStep].label}</strong> — step {currentStep + 1} of {JOB_CARD_STEPS.length}
+          <strong>{steps[currentStep].label}</strong> — step {currentStep + 1} of {steps.length}
         </Typography>
         </>}
       </Paper>
@@ -558,7 +632,7 @@ export default function JobCardForm() {
       <Box key={currentStep} sx={{ animation: 'stepEnter 220ms ease-out', '@keyframes stepEnter': { from: { opacity: 0, transform: 'translateY(8px)' }, to: { opacity: 1, transform: 'translateY(0)' } }, '@media (prefers-reduced-motion: reduce)': { animation: 'none' } }}><StepComponent form={form} errors={stepErrors} set={set} setSection={setSection} actions={stepActions} /></Box>
 
       {/* ---------------------------- sticky footer --------------------------- */}
-      {isReview ? <ReviewFooter form={form} set={set} summary={currentStep === 4} busy={submitting} back={handleBack} save={handleSaveDraft} next={handleContinue} user={currentUser} reference={stepActions.reference} createdAt={stepActions.createdAt} /> : <>
+      {isReview ? <ReviewFooter form={form} set={set} summary={originalStepIndex === 4} busy={submitting} back={handleBack} save={handleSaveDraft} next={isCounterSale && isLastStep ? handleSubmit : handleContinue} nextLabel={isLastStep ? config.finalLabel : 'Save & Next'} user={currentUser} reference={stepActions.reference} createdAt={stepActions.createdAt} context={mode} /> : <>
       <Paper
         elevation={6}
         sx={{ position: 'sticky', bottom: 0, mt: 2.5, mx: -1, px: { xs: 1.5, sm: 2 }, py: 1.5, borderRadius: 3, zIndex: 5 }}
@@ -595,7 +669,7 @@ export default function JobCardForm() {
                 disabled={submitting}
                 startIcon={submitting ? <CircularProgress size={16} /> : undefined}
               >
-                {submitting ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Job Card'}
+                {submitting ? 'Saving…' : isEdit ? 'Save Changes' : config.finalLabel}
               </Button>
             ) : (
               <Button
@@ -626,7 +700,7 @@ export default function JobCardForm() {
             variant="contained"
             onClick={() => {
               setConfirmLeave(false);
-              navigate('/jobcards');
+              navigate(listPath);
             }}
           >
             Leave
@@ -635,4 +709,8 @@ export default function JobCardForm() {
       </Dialog>
     </Box>
   );
+}
+
+export default function JobCardForm() {
+  return <JobFlowWizard mode="job-card" />;
 }

@@ -32,7 +32,6 @@ import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import TwoWheelerIcon from '@mui/icons-material/TwoWheeler';
 import SearchIcon from '@mui/icons-material/Search';
 import PersonAddAltIcon from '@mui/icons-material/PersonAddAlt';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { showToast } from '../../../redux/uiSlice';
 import {
@@ -51,7 +50,6 @@ import {
   updateVehicle,
   setVehicleType,
 } from '../../../redux/estimateSlice';
-import * as vehicleService from '../../../services/estimate/vehicleService';
 import * as customerService from '../../../services/estimate/customerService';
 import * as addressService from '../../../services/estimate/addressService';
 import { useDebounce } from '../../../utils/useDebounce';
@@ -80,9 +78,6 @@ export default function VehicleClientStep() {
   const config = useSelector(selectEstimateConfig);
   const errors = estimate.errors || {};
 
-  const [fetching, setFetching] = useState(false);
-  const [fetchNotice, setFetchNotice] = useState<{ severity: 'info' | 'warning' | 'success'; message: string } | null>(null);
-
   const [customerQuery, setCustomerQuery] = useState('');
   const [customerResults, setCustomerResults] = useState<CustomerSummary[]>([]);
   const [searchingCustomers, setSearchingCustomers] = useState(false);
@@ -110,47 +105,6 @@ export default function VehicleClientStep() {
   );
 
   const isEv = vehicle.fuelType === 'Electric' || vehicle.fuelType === 'Hybrid';
-
-  // ------------------------------------------------------------------ lookup
-  const handleFetchVehicle = async () => {
-    const reg = vehicleService.normalizeRegistration(vehicle.registrationNumber);
-    if (!reg) {
-      dispatch(showToast({ severity: 'warning', message: 'Enter a registration number first' }));
-      return;
-    }
-    setFetching(true);
-    setFetchNotice(null);
-    try {
-      const result = await vehicleService.fetchVehicle(reg);
-      dispatch(updateVehicle({ ...result.vehicle, registrationNumber: reg }));
-      // The service explains itself when it had to fall back; prefer that over
-      // a generic message.
-      const explanation = result.messages?.find(Boolean);
-      if (result.source === 'manual') {
-        setFetchNotice({
-          severity: 'warning',
-          message:
-            explanation ||
-            'Unable to fetch vehicle details. You can continue by entering the vehicle details manually.',
-        });
-      } else {
-        setFetchNotice({
-          severity: 'success',
-          message:
-            result.source === 'workshop'
-              ? 'Vehicle details loaded from your vehicle master.'
-              : `Vehicle details fetched. Review and edit anything that looks wrong.${
-                  explanation ? ` ${explanation}` : ''
-                }`,
-        });
-        dispatch(showToast({ severity: 'success', message: 'Vehicle details fetched' }));
-      }
-    } catch (err: any) {
-      setFetchNotice({ severity: 'warning', message: err?.message || 'Unable to fetch vehicle details.' });
-    } finally {
-      setFetching(false);
-    }
-  };
 
   // -------------------------------------------------------- customer search
   useEffect(() => {
@@ -249,6 +203,9 @@ export default function VehicleClientStep() {
 
   return (
     <Box>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+        Fields marked * are required to continue to the next step.
+      </Typography>
       {/* ------------------------------ vehicle type ------------------------------ */}
       <SectionCard
         title="Vehicle Type"
@@ -274,23 +231,17 @@ export default function VehicleClientStep() {
       {/* ------------------------------- lookup ---------------------------------- */}
       <SectionCard
         title="Vehicle Identification"
-        subtitle="Fetch the vehicle from the registry, or enter the details manually"
-        hint="Workshop records are checked first, then the configured registration lookup provider."
+        subtitle="Enter the vehicle registration number manually"
       >
         <Grid container spacing={2}>
-          <Grid item xs={12} sm={7}>
+          <Grid item xs={12}>
             <TextField
               fullWidth
+              required
               label="Vehicle Registration Number"
               placeholder="MH12AB1234"
               value={vehicle.registrationNumber}
               onChange={(e) => dispatch(updateVehicle({ registrationNumber: e.target.value.toUpperCase() }))}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault();
-                  void handleFetchVehicle();
-                }
-              }}
               error={Boolean(fieldError('vehicle.registrationNumber'))}
               helperText={fieldError('vehicle.registrationNumber')}
               InputProps={{
@@ -304,27 +255,7 @@ export default function VehicleClientStep() {
               inputProps={{ 'aria-label': 'Vehicle registration number', autoComplete: 'off' }}
             />
           </Grid>
-          <Grid item xs={12} sm={5} sx={{ display: 'flex', alignItems: 'flex-start', pt: { sm: 0.25 } }}>
-            <Button
-              fullWidth
-              variant="contained"
-              onClick={handleFetchVehicle}
-              disabled={fetching}
-              startIcon={fetching ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
-              sx={{ height: 56 }}
-            >
-              {fetching ? 'Fetching…' : 'Fetch Vehicle'}
-            </Button>
-          </Grid>
         </Grid>
-
-        {fetchNotice && (
-          <Box sx={{ mt: 2 }}>
-            <InlineAlert severity={fetchNotice.severity} onClose={() => setFetchNotice(null)}>
-              {fetchNotice.message}
-            </InlineAlert>
-          </Box>
-        )}
       </SectionCard>
 
       {/* ------------------------------- details -------------------------------- */}
@@ -341,7 +272,7 @@ export default function VehicleClientStep() {
       >
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6} md={3}>
-            <TextField fullWidth select label="Brand" value={vehicle.brand} onChange={(e) => dispatch(updateVehicle({ brand: e.target.value }))} error={Boolean(fieldError('vehicle.brand'))} helperText={fieldError('vehicle.brand')}>
+            <TextField fullWidth required select label="Brand" value={vehicle.brand} onChange={(e) => dispatch(updateVehicle({ brand: e.target.value }))} error={Boolean(fieldError('vehicle.brand'))} helperText={fieldError('vehicle.brand')}>
               {VEHICLE_BRANDS.map((b) => (
                 <MenuItem key={b} value={b}>
                   {b}
@@ -350,13 +281,13 @@ export default function VehicleClientStep() {
             </TextField>
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
-            <TextField fullWidth label="Model" value={vehicle.model} onChange={(e) => dispatch(updateVehicle({ model: e.target.value }))} error={Boolean(fieldError('vehicle.model'))} helperText={fieldError('vehicle.model')} />
+            <TextField fullWidth required label="Model" value={vehicle.model} onChange={(e) => dispatch(updateVehicle({ model: e.target.value }))} error={Boolean(fieldError('vehicle.model'))} helperText={fieldError('vehicle.model')} />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <TextField fullWidth label="Variant" value={vehicle.variant || ''} onChange={(e) => dispatch(updateVehicle({ variant: e.target.value }))} />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
-            <TextField fullWidth select label="Manufacturing Year" value={vehicle.year ?? ''} onChange={(e) => dispatch(updateVehicle({ year: Number(e.target.value) }))} error={Boolean(fieldError('vehicle.year'))} helperText={fieldError('vehicle.year')}>
+            <TextField fullWidth required select label="Manufacturing Year" value={vehicle.year ?? ''} onChange={(e) => dispatch(updateVehicle({ year: Number(e.target.value) }))} error={Boolean(fieldError('vehicle.year'))} helperText={fieldError('vehicle.year')}>
               {vehicleYears().map((y) => (
                 <MenuItem key={y} value={y}>
                   {y}
@@ -366,7 +297,7 @@ export default function VehicleClientStep() {
           </Grid>
 
           <Grid item xs={12} sm={6} md={3}>
-            <TextField fullWidth select label="Fuel Type" value={vehicle.fuelType || ''} onChange={(e) => dispatch(updateVehicle({ fuelType: e.target.value }))} error={Boolean(fieldError('vehicle.fuelType'))} helperText={fieldError('vehicle.fuelType')}>
+            <TextField fullWidth required select label="Fuel Type" value={vehicle.fuelType || ''} onChange={(e) => dispatch(updateVehicle({ fuelType: e.target.value }))} error={Boolean(fieldError('vehicle.fuelType'))} helperText={fieldError('vehicle.fuelType')}>
               {FUEL_TYPES.map((f) => (
                 <MenuItem key={f} value={f}>
                   {f}
@@ -446,7 +377,7 @@ export default function VehicleClientStep() {
       >
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6} md={3}>
-            <TextField fullWidth label="Insurance Company" value={insurance.company} onChange={(e) => dispatch(updateInsurance({ company: e.target.value }))} error={Boolean(fieldError('insurance.company'))} helperText={fieldError('insurance.company')} />
+            <TextField fullWidth required={Boolean(insurance.policyNumber)} label="Insurance Company" value={insurance.company} onChange={(e) => dispatch(updateInsurance({ company: e.target.value }))} error={Boolean(fieldError('insurance.company'))} helperText={fieldError('insurance.company')} />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
             <TextField fullWidth label="Policy Number" value={insurance.policyNumber} onChange={(e) => dispatch(updateInsurance({ policyNumber: e.target.value }))} error={Boolean(fieldError('insurance.policyNumber'))} helperText={fieldError('insurance.policyNumber')} />
@@ -521,6 +452,7 @@ export default function VehicleClientStep() {
                 }}
               >
                 <TextField
+                  required={doc.setReminder}
                   type="date"
                   label={`${label} — Expiry Date`}
                   InputLabelProps={{ shrink: true }}
@@ -653,11 +585,12 @@ export default function VehicleClientStep() {
 
         <Grid container spacing={2} sx={{ mt: 1 }}>
           <Grid item xs={12} sm={6} md={4}>
-            <TextField fullWidth label="Customer Name" value={customer.name} onChange={(e) => dispatch(updateCustomer({ name: e.target.value }))} error={Boolean(fieldError('customer.name'))} helperText={fieldError('customer.name')} />
+            <TextField fullWidth required label="Customer Name" value={customer.name} onChange={(e) => dispatch(updateCustomer({ name: e.target.value }))} error={Boolean(fieldError('customer.name'))} helperText={fieldError('customer.name')} />
           </Grid>
           <Grid item xs={12} sm={6} md={4}>
             <TextField
               fullWidth
+              required
               label="Phone Number"
               value={customer.phone}
               onChange={(e) => dispatch(updateCustomer({ phone: e.target.value.replace(/[^\d+\s-]/g, '') }))}
@@ -754,7 +687,7 @@ export default function VehicleClientStep() {
       >
         <Grid container spacing={2}>
           <Grid item xs={12} sm={6} md={3}>
-            <TextField fullWidth select label="ID Type" value={identityProof.idType || ''} onChange={(e) => dispatch(updateIdentityProof({ idType: e.target.value }))} error={Boolean(fieldError('identityProof.idType'))} helperText={fieldError('identityProof.idType')}>
+            <TextField fullWidth required={Boolean(identityProof.idNumber)} select label="ID Type" value={identityProof.idType || ''} onChange={(e) => dispatch(updateIdentityProof({ idType: e.target.value }))} error={Boolean(fieldError('identityProof.idType'))} helperText={fieldError('identityProof.idType')}>
               {ID_PROOF_TYPES.map((t) => (
                 <MenuItem key={t} value={t}>
                   {t}
@@ -765,6 +698,7 @@ export default function VehicleClientStep() {
           <Grid item xs={12} sm={6} md={4}>
             <TextField
               fullWidth
+              required={Boolean(identityProof.idType)}
               label="ID Number"
               value={identityProof.idNumber || ''}
               onChange={(e) => dispatch(updateIdentityProof({ idNumber: e.target.value.toUpperCase() }))}
@@ -807,13 +741,13 @@ export default function VehicleClientStep() {
         <Collapse in={pickup.enabled}>
           <Grid container spacing={2} sx={{ mt: 0.5 }}>
             <Grid item xs={12} md={6}>
-              <TextField fullWidth multiline minRows={2} label="Pickup Address" value={pickup.address} onChange={(e) => dispatch(updatePickup({ address: e.target.value }))} error={Boolean(fieldError('pickup.address') || fieldError('pickup'))} helperText={fieldError('pickup.address') || fieldError('pickup')} />
+              <TextField fullWidth required multiline minRows={2} label="Pickup Address" value={pickup.address} onChange={(e) => dispatch(updatePickup({ address: e.target.value }))} error={Boolean(fieldError('pickup.address') || fieldError('pickup'))} helperText={fieldError('pickup.address') || fieldError('pickup')} />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <TextField fullWidth label="Pickup Contact Person" value={pickup.contactPerson} onChange={(e) => dispatch(updatePickup({ contactPerson: e.target.value }))} error={Boolean(fieldError('pickup.contactPerson'))} helperText={fieldError('pickup.contactPerson')} />
+              <TextField fullWidth required label="Pickup Contact Person" value={pickup.contactPerson} onChange={(e) => dispatch(updatePickup({ contactPerson: e.target.value }))} error={Boolean(fieldError('pickup.contactPerson'))} helperText={fieldError('pickup.contactPerson')} />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <TextField fullWidth label="Pickup Phone" value={pickup.phone} onChange={(e) => dispatch(updatePickup({ phone: e.target.value.replace(/[^\d+\s-]/g, '') }))} error={Boolean(fieldError('pickup.phone'))} helperText={fieldError('pickup.phone')} />
+              <TextField fullWidth required label="Pickup Phone" value={pickup.phone} onChange={(e) => dispatch(updatePickup({ phone: e.target.value.replace(/[^\d+\s-]/g, '') }))} error={Boolean(fieldError('pickup.phone'))} helperText={fieldError('pickup.phone')} />
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
               <TextField fullWidth type="date" label="Preferred Pickup Date" InputLabelProps={{ shrink: true }} value={pickup.preferredDate} onChange={(e) => dispatch(updatePickup({ preferredDate: e.target.value }))} error={Boolean(fieldError('pickup.preferredDate'))} helperText={fieldError('pickup.preferredDate')} />

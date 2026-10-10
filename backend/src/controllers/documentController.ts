@@ -11,6 +11,12 @@ export const getDocuments = asyncHandler(async (req, res) => {
   res.json(result);
 });
 
+export const getDocumentFile = asyncHandler(async (req, res) => {
+  const file = await service.getDocumentFile(req.params);
+  res.type(file.mimeType || 'application/octet-stream');
+  res.sendFile(file.absolutePath);
+});
+
 export const deleteDocument = asyncHandler(async (req, res) => {
   const result = await service.deleteDocument(req.params);
   res.json(result);

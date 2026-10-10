@@ -6,6 +6,8 @@
 export interface InventoryFilters {
   q: string;
   category: string;
+  vehicleType: string;
+  partType: string;
   brand: string;
   location: string;
   workshopId: string;
@@ -31,14 +33,28 @@ export interface InventoryItem {
   id: string;
   productCode: string;
   productName: string;
-  category: string;
-  brand?: string;
-  description?: string;
   barcode?: string;
+  vehicleType?: '2W' | '4W';
+  category: string;
+  subCategory?: string;
+  partType?: 'OEM' | 'Aftermarket' | 'Other';
+  remark?: string;
+  employeeName?: string;
+  firstStockInDate?: string;
+  oldestRemainingStockDate?: string | null;
+  brand?: string;
+  hsn?: string;
+  description?: string;
   pricing: {
     costPrice: number;
     sellingPrice: number;
     tax: number;
+    purchaseTaxType?: 'NONE' | 'GST' | 'IGST';
+    purchaseTaxPercent?: number;
+    purchaseDiscountAmount?: number;
+    saleTaxType?: 'NONE' | 'GST' | 'IGST';
+    saleTaxPercent?: number;
+    saleDiscountAmount?: number;
   };
   inventory: {
     quantity: number;
@@ -62,6 +78,8 @@ export interface InventoryItem {
 export interface InventoryStats {
   uniquePartNos: number;
   totalStockItems: number;
+  purchaseValue: number;
+  saleValue: number;
   stockValue: number;
   lowStock: number;
   outOfStock: number;
@@ -80,6 +98,7 @@ export interface InventoryInsight {
 
 export interface StockAlert {
   id: string;
+  productId: string;
   productCode: string;
   productName: string;
   category: string;
@@ -89,6 +108,21 @@ export interface StockAlert {
   workshopName?: string;
   type: 'out-of-stock' | 'low-stock' | 'reorder-level' | 'critical';
   createdAt: string;
+}
+
+export interface StockMovement {
+  id: string;
+  transactionType: string;
+  quantity: number;
+  reference?: { type?: string; number?: string };
+  stockBefore: number;
+  stockAfter: number;
+  unitPrice?: number | null;
+  reason?: string;
+  notes?: string;
+  recordedBy?: { username?: string; email?: string } | string | null;
+  recordedAt: string;
+  createdAt?: string;
 }
 
 export interface PurchaseOrder {
@@ -166,24 +200,23 @@ export const AGEING_BUCKETS = [
 export const DEFAULT_AGEING_THRESHOLD_DAYS = 240;
 
 export const COLUMNS = [
-  { field: 'productCode', label: 'Part No', sortable: true },
-  { field: 'productName', label: 'Part Name', sortable: false },
-  { field: 'brand', label: 'Brand', sortable: false },
+  { field: 'barcode', label: 'Bar Code', sortable: false },
+  { field: 'productName', label: 'Part Name', sortable: true },
+  { field: 'productCode', label: 'Part Number', sortable: true },
+  { field: 'vehicleType', label: 'Vehicle Type', sortable: true },
+  { field: 'inventory.quantity', label: 'Available Quantity', sortable: true, numeric: true },
   { field: 'category', label: 'Category', sortable: true },
-  { field: 'inventory.quantity', label: 'QoH', sortable: true, numeric: true },
-  { field: 'inventory.minimumLevel', label: 'Re-order Level', sortable: true, numeric: true },
-  { field: 'stockStatus', label: 'Status', sortable: false },
-  { field: 'pricing.costPrice', label: 'Avg Purchase Price', sortable: true, numeric: true },
-  { field: 'pricing.sellingPrice', label: 'Avg Selling Price', sortable: true, numeric: true },
-  { field: 'pricing.tax', label: 'Tax %', sortable: true, numeric: true },
-  { field: 'pricing.taxAmount', label: 'Tax Amount', sortable: true, numeric: true },
-  { field: 'inventoryValue', label: 'Stock Value', sortable: true, numeric: true },
-  { field: 'inventory.rackNumber', label: 'Rack Number', sortable: false },
-  { field: 'inventory.location', label: 'Workshop / Location', sortable: true },
-  { field: 'barcode', label: 'Barcode', sortable: false },
-  { field: 'ageing', label: 'Ageing', sortable: true, numeric: true },
-  { field: 'lastPurchaseDate', label: 'Last Purchase Date', sortable: true },
-  { field: 'lastMovementDate', label: 'Last Movement Date', sortable: true },
+  { field: 'subCategory', label: 'Sub Category', sortable: false },
+  { field: 'inventory.location', label: 'Location', sortable: true },
+  { field: 'pricing.costPrice', label: 'Purchase Price', sortable: true, numeric: true },
+  { field: 'pricing.sellingPrice', label: 'Selling Price', sortable: true, numeric: true },
+  { field: 'stockActions', label: 'Stock', sortable: false },
+  { field: 'partType', label: 'Part Type', sortable: true },
+  { field: 'history', label: 'Part History', sortable: false },
+  { field: 'remark', label: 'Remark', sortable: false },
+  { field: 'employeeName', label: 'Employee Name', sortable: false },
+  { field: 'age', label: 'Age', sortable: false },
+  { field: 'delete', label: 'Delete', sortable: false },
 ] as const;
 
 export const QUICK_FILTERS: Record<string, Partial<InventoryFilters>> = {
@@ -221,6 +254,8 @@ export function getDefaultFilters(): InventoryFilters {
   return {
     q: '',
     category: '',
+    vehicleType: '',
+    partType: '',
     brand: '',
     location: '',
     workshopId: '',
@@ -239,19 +274,22 @@ export function buildInventoryParams(filters: InventoryFilters, sortField?: stri
   const params: Record<string, any> = {};
   if (filters.q) params.q = filters.q;
   if (filters.category) params.category = filters.category;
+  if (filters.vehicleType) params.vehicleType = filters.vehicleType;
+  if (filters.partType) params.partType = filters.partType;
   if (filters.brand) params.brand = filters.brand;
   if (filters.location) params.location = filters.location;
   if (filters.workshopId) params.workshopId = filters.workshopId;
   if (filters.inStock) params.inStock = 'true';
   if (filters.outOfStock) params.outOfStock = 'true';
   if (filters.reorderLevel) params.reorderLevel = 'true';
+  if (filters.stockStatus && filters.stockStatus !== 'all') params.stockStatus = filters.stockStatus;
   if (filters.minPrice || filters.maxPrice) {
     params.minPrice = filters.minPrice;
     params.maxPrice = filters.maxPrice;
   }
   if (filters.minQty || filters.maxQty) {
-    params.minQty = filters.minQty;
-    params.maxQty = filters.maxQty;
+    if (filters.minQty) params.minStock = filters.minQty;
+    if (filters.maxQty) params.maxStock = filters.maxQty;
   }
   params.page = filters.page;
   params.limit = filters.limit;

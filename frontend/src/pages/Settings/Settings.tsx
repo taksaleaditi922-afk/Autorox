@@ -98,6 +98,12 @@ export default function Settings() {
               <Grid item xs={12} md={6}>
                 <TextField fullWidth label={t('settings.currency')} value={settings.currency || 'INR'} onChange={(e) => setSettings((s) => ({ ...s, currency: e.target.value }))} />
               </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField fullWidth label="Default Low Stock Threshold" type="number" inputProps={{ min: 0 }} value={settings.inventory?.lowStockThreshold ?? 5} onChange={(e) => setSettings((s) => ({ ...s, inventory: { ...s.inventory, lowStockThreshold: Math.max(0, +e.target.value) } }))} />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <TextField fullWidth label="Aged Stock Threshold (Days)" type="number" inputProps={{ min: 1 }} value={settings.inventory?.agedStockDays ?? 90} onChange={(e) => setSettings((s) => ({ ...s, inventory: { ...s.inventory, agedStockDays: Math.max(1, +e.target.value) } }))} />
+              </Grid>
             </Grid>
             <Divider sx={{ my: 3 }} />
             <Box sx={{ mb: 2 }}>
