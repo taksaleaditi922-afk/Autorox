@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
   Box, Card, CardContent, Typography, TextField, MenuItem, Button, Table, TableHead, TableRow,
   TableBody, TableCell, TableContainer, TablePagination, IconButton, InputAdornment,
@@ -44,10 +44,10 @@ const EMPTY_BILL = {
 const ITEM_ROWS = [{ productId: '', productCode: '', productName: '', quantity: 1, unitPrice: 0, tax: TAX_RATE }];
 
 export default function SellProducts() {
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
   const navigate = useNavigate();
-  const { items, pagination, loading } = useSelector((state) => state.sales);
-  const { user } = useSelector((state) => state.auth);
+  const { items, pagination, loading } = useAppSelector((state) => state.sales);
+  const { user } = useAppSelector((state) => state.auth);
   const [filters, setFilters] = useState({ status: '', q: '', advisor: '' });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -80,7 +80,7 @@ export default function SellProducts() {
     setPage(0);
   };
 
-  const availableProducts = useSelector((state) => state.products.items || []);
+  const availableProducts = useAppSelector((state) => state.products.items || []);
 
   const resetBillForm = () => {
     setForm({ ...EMPTY_BILL });

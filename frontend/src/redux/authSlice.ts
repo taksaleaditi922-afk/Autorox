@@ -1,7 +1,7 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../services/api';
 
-export const login = createAsyncThunk('auth/login', async ({ email, password }, { rejectWithValue }) => {
+export const login = createAsyncThunk('auth/login', async ({ email, password }: { email: string; password: string }, { rejectWithValue }) => {
   try {
     const res = await api.post('/auth/login', { email, password });
     localStorage.setItem('accessToken', res.data.accessToken);
@@ -17,6 +17,8 @@ export const login = createAsyncThunk('auth/login', async ({ email, password }, 
   }
 });
 
+type RejectValue = (value: any) => any;
+
 export const logout = createAsyncThunk('auth/logout', async () => {
   try {
     await api.post('/auth/logout');
@@ -28,15 +30,18 @@ export const logout = createAsyncThunk('auth/logout', async () => {
   }
 });
 
-export const fetchMe = createAsyncThunk('auth/me', async (_, { rejectWithValue }) => {
-  try {
-    const res = await api.get('/auth/me');
-    localStorage.setItem('user', JSON.stringify(res.data.user));
-    return res.data.user;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Session expired');
+export const fetchMe = createAsyncThunk(
+  'auth/me',
+  async (_, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.get('/auth/me');
+      localStorage.setItem('user', JSON.stringify(res.data.user));
+      return res.data.user;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Session expired');
+    }
   }
-});
+);
 
 const storedUser = (() => {
   try {

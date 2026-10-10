@@ -141,7 +141,6 @@ export default function JobCardForm() {
   const { current } = useSelector((state: RootState) => state.jobCards);
   const user = useSelector((state: RootState) => state.auth.user);
   const [searchParams] = useSearchParams();
-
   const [form, setForm] = useState<JobCardFormState>(() => createEmptyJobCardForm());
   // The server side id. Starts as the edited job card's id; a draft created so
   // the customer approval link can be shared is stored here too.

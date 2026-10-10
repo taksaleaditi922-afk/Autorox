@@ -122,16 +122,16 @@ export const fetchInventoryInsightsThunk = createAsyncThunk(
 export const fetchStockAlertsThunk = createAsyncThunk(
   'inventory/fetchAlerts',
   async (_, { rejectWithValue }) => {
-    const result = await withFallback(() => fetchStockAlertsApi(), [], 'alerts');
+    const result = await withFallback(() => fetchStockAlertsApi(), { data: [] }, 'alerts');
     if (result.success) return result.data;
-    return computeMockAlerts(MOCK_ITEMS);
+    return { data: computeMockAlerts(MOCK_ITEMS), pagination: { page: 1, limit: 20, total: computeMockAlerts(MOCK_ITEMS).length, totalPages: 1 } };
   }
 );
 
 export const fetchPurchaseOrdersThunk = createAsyncThunk(
   'inventory/fetchOrders',
   async (_, { rejectWithValue }) => {
-    const result = await withFallback(() => fetchPurchaseOrdersApi(), mockOrders(24), 'orders');
+    const result = await withFallback(() => fetchPurchaseOrdersApi(), { data: mockOrders(24), pagination: { page: 1, limit: 24, total: 24, totalPages: 1 } }, 'orders');
     if (result.success) return result.data;
     return { data: mockOrders(24), pagination: { page: 1, limit: 24, total: 24, totalPages: 1 } };
   }
@@ -140,7 +140,7 @@ export const fetchPurchaseOrdersThunk = createAsyncThunk(
 export const fetchInwardRecordsThunk = createAsyncThunk(
   'inventory/fetchInward',
   async (_, { rejectWithValue }) => {
-    const result = await withFallback(() => fetchInwardRecordsApi(), mockInward(20), 'inward');
+    const result = await withFallback(() => fetchInwardRecordsApi(), { data: mockInward(20), pagination: { page: 1, limit: 20, total: 20, totalPages: 1 } }, 'inward');
     if (result.success) return result.data;
     return { data: mockInward(20), pagination: { page: 1, limit: 20, total: 20, totalPages: 1 } };
   }
@@ -149,7 +149,7 @@ export const fetchInwardRecordsThunk = createAsyncThunk(
 export const fetchIssuedRecordsThunk = createAsyncThunk(
   'inventory/fetchIssued',
   async (_, { rejectWithValue }) => {
-    const result = await withFallback(() => fetchIssuedRecordsApi(), mockIssued(22), 'issued');
+    const result = await withFallback(() => fetchIssuedRecordsApi(), { data: mockIssued(22), pagination: { page: 1, limit: 22, total: 22, totalPages: 1 } }, 'issued');
     if (result.success) return result.data;
     return { data: mockIssued(22), pagination: { page: 1, limit: 22, total: 22, totalPages: 1 } };
   }
@@ -158,7 +158,7 @@ export const fetchIssuedRecordsThunk = createAsyncThunk(
 export const fetchPurchaseReturnsThunk = createAsyncThunk(
   'inventory/fetchReturns',
   async (_, { rejectWithValue }) => {
-    const result = await withFallback(() => fetchPurchaseReturnsApi(), mockPurchaseReturns(14), 'returns');
+    const result = await withFallback(() => fetchPurchaseReturnsApi(), { data: mockPurchaseReturns(14), pagination: { page: 1, limit: 14, total: 14, totalPages: 1 } }, 'returns');
     if (result.success) return result.data;
     return { data: mockPurchaseReturns(14), pagination: { page: 1, limit: 14, total: 14, totalPages: 1 } };
   }
@@ -317,7 +317,7 @@ const inventorySlice = createSlice({
       })
       .addCase(fetchStockAlertsThunk.fulfilled, (state, action) => {
         state.alertsLoading = false;
-        state.alerts = action.payload;
+        state.alerts = action.payload.data ?? action.payload;
       })
       .addCase(fetchStockAlertsThunk.rejected, (state, action) => {
         state.alertsLoading = false;

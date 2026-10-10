@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useSelector } from 'react-redux';
+import { useAppSelector } from '../store/hooks';
 import Layout from '../layouts/Layout';
 import ProtectedRoute from './ProtectedRoute';
 import Toast from './Toast';
@@ -28,8 +28,8 @@ const SellProducts = lazy(() => import('../pages/SellProducts/SellProducts'));
 const BillDetails = lazy(() => import('../pages/BillDetails/BillDetails'));
 
 export default function App() {
-  const isAuth = useSelector((state) => state.auth.isAuthenticated);
-  const lang = useSelector((state) => state.language.lang);
+  const isAuth = useAppSelector((state) => state.auth.isAuthenticated);
+  const lang = useAppSelector((state) => state.language.lang);
 
   // Reflect the selected language on <html> and flip direction for RTL locales.
   useEffect(() => {

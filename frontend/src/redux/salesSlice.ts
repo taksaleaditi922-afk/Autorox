@@ -1,83 +1,100 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../services/api';
 
-export const fetchSales = createAsyncThunk('sales/fetch', async (params = {}, { rejectWithValue }) => {
-  try {
-    const res = await api.get('/sales', { params });
-    return res.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to load sales');
-  }
-});
+type RejectValue = (value: any) => any;
 
-export const fetchSale = createAsyncThunk('sales/fetchOne', async (id, { rejectWithValue }) => {
-  try {
-    const res = await api.get(`/sales/${id}`);
-    return res.data.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to load sale');
+export const fetchSales = createAsyncThunk(
+  'sales/fetch',
+  async (params: Record<string, any> = {}, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.get('/sales', { params });
+      return res.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load sales');
+    }
   }
-});
+);
 
-export const createSale = createAsyncThunk('sales/create', async (payload, { rejectWithValue }) => {
-  try {
-    const res = await api.post('/sales', payload);
-    return res.data.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to create sale');
+export const fetchSale = createAsyncThunk(
+  'sales/fetchOne',
+  async (id: string, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.get(`/sales/${id}`);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load sale');
+    }
   }
-});
+);
 
-export const updateSale = createAsyncThunk('sales/update', async ({ id, payload }, { rejectWithValue }) => {
-  try {
-    const res = await api.put(`/sales/${id}`, payload);
-    return res.data.data;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to update sale');
+export const createSale = createAsyncThunk(
+  'sales/create',
+  async (payload: Record<string, any>, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.post('/sales', payload);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to create sale');
+    }
   }
-});
+);
 
-export const deleteSale = createAsyncThunk('sales/delete', async (id, { rejectWithValue }) => {
-  try {
-    await api.delete(`/sales/${id}`);
-    return id;
-  } catch (err) {
-    return rejectWithValue(err.response?.data?.error || 'Failed to delete sale');
+export const updateSale = createAsyncThunk(
+  'sales/update',
+  async ({ id, payload }: { id: string; payload: Record<string, any> }, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      const res = await api.put(`/sales/${id}`, payload);
+      return res.data.data;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to update sale');
+    }
   }
-});
+);
+
+export const deleteSale = createAsyncThunk(
+  'sales/delete',
+  async (id: string, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
+    try {
+      await api.delete(`/sales/${id}`);
+      return id;
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to delete sale');
+    }
+  }
+);
 
 export const updateSaleStatus = createAsyncThunk(
   'sales/status',
-  async ({ id, status }, { rejectWithValue }) => {
+  async ({ id, status }: { id: string; status: string }, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
     try {
       const res = await api.patch(`/sales/${id}/status`, { status });
       return res.data.data;
-    } catch (err) {
-      return rejectWithValue(err.response?.data?.error || 'Failed to update status');
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to update status');
     }
   }
 );
 
 export const recordPayment = createAsyncThunk(
   'sales/recordPayment',
-  async ({ id, payload }, { rejectWithValue }) => {
+  async ({ id, payload }: { id: string; payload: Record<string, any> }, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
     try {
       const res = await api.post(`/sales/${id}/payment`, payload);
       return res.data.data;
-    } catch (err) {
-      return rejectWithValue(err.response?.data?.error || 'Failed to record payment');
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to record payment');
     }
   }
 );
 
 export const fetchPaymentHistory = createAsyncThunk(
   'sales/paymentHistory',
-  async (id, { rejectWithValue }) => {
+  async (id: string, { rejectWithValue }: { rejectWithValue: RejectValue }) => {
     try {
       const res = await api.get(`/sales/${id}/payments`);
       return res.data.data;
-    } catch (err) {
-      return rejectWithValue(err.response?.data?.error || 'Failed to load payment history');
+    } catch (err: any) {
+      return rejectWithValue(err?.response?.data?.error || 'Failed to load payment history');
     }
   }
 );

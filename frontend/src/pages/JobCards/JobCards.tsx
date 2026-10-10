@@ -1,14 +1,7 @@
-// ---------------------------------------------------------------------------
-// Job Card dashboard.
-//
-// Status tabs (with live counts) sit above a filterable table. Each booking can
-// resume its invoice, open the payment history, jump to the inspection report,
-// request/record feedback and generate a gate pass without leaving the list.
-// ---------------------------------------------------------------------------
-
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import {
   Alert,
   Avatar,
@@ -80,19 +73,11 @@ const initials = (name?: string) =>
 const hasIssuedInvoice = (jc: any) => ['Issued', 'Paid', 'Sent'].includes(jc?.invoice?.status);
 
 export default function JobCards() {
-  const dispatch = useDispatch<AppDispatch>();
+  const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { items, pagination, loading, stats } = useSelector((state: RootState) => state.jobCards) as {
-    items: any[];
-    pagination: { total: number };
-    loading: boolean;
-    stats: JobCardStats;
-  };
-  const user = useSelector((state: RootState) => state.auth.user);
+  const { items, pagination, loading } = useSelector((state) => state.jobCards);
 
-  const [activeTab, setActiveTab] = useState(0);
-  const [search, setSearch] = useState('');
-  const [type, setType] = useState('');
+  const [filters, setFilters] = useState({ status: '', priority: '', q: '', type: '' });
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
